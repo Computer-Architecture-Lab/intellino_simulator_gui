@@ -7,11 +7,6 @@ from easymode_window import Ui_EasymodeWindow   # easymode window
 from hardmode_window import Ui_HardmodeWindow   # easymode window
 
 
-# # qt 플랫폼 플러그인 경로 설정정
-# env_root = os.path.join(os.path.dirname(sys.executable), "Library", "plugins")
-# os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = os.path.join(env_root, "platforms")
-# os.environ["QT_PLUGIN_PATH"] = env_root  # 추가!
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -27,7 +22,6 @@ class MainWindow(QMainWindow):
         else:
             print("이미지 파일을 찾을 수 없습니다:", img_path)
 
-
         self.ui.easyModeBtn.clicked.connect(self.easyBtnFunction)
         self.ui.hardModeBtn.clicked.connect(self.hardBtnFunction)
 
@@ -36,6 +30,7 @@ class MainWindow(QMainWindow):
         self.easyMode_window.show()
 
     def hardBtnFunction(self):
+
         self.easyMode_window = HardModeWindow()
         self.easyMode_window.show()
 
