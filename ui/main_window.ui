@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>631</width>
+    <height>472</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>631</width>
+    <height>472</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>631</width>
+    <height>472</height>
+   </size>
+  </property>
+  <property name="font">
+   <font>
+    <family>Agency FB</family>
+   </font>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">background-color: white;
+</string>
+  </property>
+  <property name="animated">
+   <bool>true</bool>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QPushButton" name="easyModeBtn">
+    <property name="geometry">
+     <rect>
+      <x>30</x>
+      <y>300</y>
+      <width>261</width>
+      <height>131</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>Bahnschrift</family>
+      <pointsize>16</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+	background-color: qlineargradient(
+        x1: 0, y1: 0,
+        x2: 0, y2: 1,
+        stop: 0 #00BFFF,
+        stop: 1 #48D1CC
+    );
+    color: white;                    /* 텍스트 색 */
+    border: none;                    /* 기본 테두리 제거 */
+    border-radius: 10px;             /* 둥글게: 반지름 10px */
+    padding: 8px 16px;               /* 안쪽 여백 */
+}</string>
+    </property>
+    <property name="text">
+     <string>Existing datasets mode</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="hardModeBtn">
+    <property name="geometry">
+     <rect>
+      <x>340</x>
+      <y>300</y>
+      <width>261</width>
+      <height>131</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <family>Bahnschrift</family>
+      <pointsize>16</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+	background-color: qlineargradient(
+        x1: 0, y1: 0,
+        x2: 0, y2: 1,
+        stop: 0 #0000CD,
+        stop: 1 #1E90FF
+    );
+    color: white;                    /* 텍스트 색 */
+    border: none;                    /* 기본 테두리 제거 */
+    border-radius: 10px;             /* 둥글게: 반지름 10px */
+    padding: 8px 16px;               /* 안쪽 여백 */
+}
+</string>
+    </property>
+    <property name="text">
+     <string>Custom datasets mode</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="imageLabel">
+    <property name="geometry">
+     <rect>
+      <x>120</x>
+      <y>30</y>
+      <width>391</width>
+      <height>251</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="pixmap">
+     <pixmap>intellino_TM.png</pixmap>
+    </property>
+    <property name="scaledContents">
+     <bool>false</bool>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
