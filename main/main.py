@@ -4,6 +4,7 @@ from PySide2.QtGui import QPixmap
 from PySide2.QtWidgets import QApplication, QMainWindow
 from ui_mainwindow import Ui_MainWindow  # GUI main window 
 from easymode_window import Ui_EasymodeWindow   # easymode window
+from hardmode_window import Ui_HardmodeWindow   # easymode window
 
 
 # # qt 플랫폼 플러그인 경로 설정정
@@ -35,7 +36,8 @@ class MainWindow(QMainWindow):
         self.easyMode_window.show()
 
     def hardBtnFunction(self):
-        print("open")
+        self.easyMode_window = HardModeWindow()
+        self.easyMode_window.show()
 
 
 class EasyModeWindow(QMainWindow):
@@ -44,10 +46,21 @@ class EasyModeWindow(QMainWindow):
         self.ui = Ui_EasymodeWindow()
         self.ui.setupUi(self)
 
+class HardModeWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.ui = Ui_HardmodeWindow()
+        self.ui.setupUi(self)
     
 
+
+
+#main
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
+
+
+
