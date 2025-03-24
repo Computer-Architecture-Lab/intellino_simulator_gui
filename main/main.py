@@ -3,6 +3,7 @@ import os
 from PySide2.QtGui import QPixmap
 from PySide2.QtWidgets import QApplication, QMainWindow
 from ui_mainwindow import Ui_MainWindow  # GUI main window 
+from easymode_window import Ui_EasymodeWindow   # easymode window
 
 
 # # qt 플랫폼 플러그인 경로 설정정
@@ -23,20 +24,25 @@ class MainWindow(QMainWindow):
             self.ui.imageLabel.setPixmap(QPixmap(img_path))
             self.ui.imageLabel.setScaledContents(True)
         else:
-            print("❌ 이미지 파일을 찾을 수 없습니다:", img_path)
-
-
+            print("이미지 파일을 찾을 수 없습니다:", img_path)
 
 
         self.ui.easyModeBtn.clicked.connect(self.easyBtnFunction)
         self.ui.hardModeBtn.clicked.connect(self.hardBtnFunction)
 
     def easyBtnFunction(self):
-        self.easyMode_window = MainWindow()
+        self.easyMode_window = EasyModeWindow()
         self.easyMode_window.show()
 
     def hardBtnFunction(self):
         print("open")
+
+
+class EasyModeWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.ui = Ui_EasymodeWindow()
+        self.ui.setupUi(self)
 
     
 
