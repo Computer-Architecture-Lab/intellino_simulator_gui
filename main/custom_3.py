@@ -82,7 +82,7 @@ class TrainDatasetGroup(QGroupBox):
                     background-color: #e9ecef;
                 }
             """)
-            browse_btn.clicked.connect(lambda _, inp=file_input: self.browse_file(inp))
+            browse_btn.clicked.connect(self.browse_file)
 
             h_layout.addWidget(label)
             h_layout.addWidget(file_input)
@@ -93,10 +93,10 @@ class TrainDatasetGroup(QGroupBox):
 
         return layout
 
-    def browse_file(self, target_input):
+    def browse_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)")
         if file_path:
-            target_input.setText(file_path)
+            self.file_input.setText(file_path)
 
 
 class SubWindow(QWidget):
