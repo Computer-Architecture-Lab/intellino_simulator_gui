@@ -1,9 +1,9 @@
 import sys
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QLineEdit, QGraphicsDropShadowEffect
+    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog
 )
-from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
+from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QPoint
 
 # 공통 버튼 스타일
@@ -25,108 +25,84 @@ BUTTON_STYLE = """
     }
 """
 
-# 1. 메모리 사이즈 선택 박스
-class MemorySizeGroup(QGroupBox):
-    def __init__(self, title):
-        super().__init__(title)
-        self.setMaximumHeight(90)
-        self.setStyleSheet(self._groupbox_style())
-
-        layout = QHBoxLayout(spacing=15)
-        layout.setContentsMargins(10, 10, 10, 10)
-
-        for size in ["2KByte", "8KByte", "16KByte"]:
-            btn = QPushButton(size)
-            btn.setFixedSize(100, 40)
-            btn.setStyleSheet(BUTTON_STYLE)
-            layout.addWidget(btn)
-
-        self.setLayout(layout)
-
-    def _groupbox_style(self):
-        return """
+class TrainDatasetGroup(QGroupBox):
+    def __init__(self, num_categories=3):  # 기본적으로 3개 생성
+        super().__init__("6. Training datasets of each category")
+        self.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
-                font-size: 14px;
-                border: 1px solid #888;
+                border: 1px solid #b0b0b0;
                 border-radius: 10px;
-                padding: 8px;
+                margin-top: 10px;
+                padding: 10px;
             }
-        """
-
-
-# 2. 숫자 입력 박스 (공통 구조)
-class IntegerInputGroup(QGroupBox):
-    def __init__(self, title, example_text):
-        super().__init__(title)
-        self.setMaximumHeight(90)
-        self.setStyleSheet(self._groupbox_style())
-
-        layout = QHBoxLayout(spacing=10)
-        layout.setContentsMargins(10, 10, 10, 10)
-
-        self.input = QLineEdit()
-        self.input.setPlaceholderText(example_text)
-        self.input.setValidator(QIntValidator(0, 9999))
-        self.input.setFixedSize(600, 35)
-        self.input.setStyleSheet(self._input_style())
-
-        self.apply_btn = QPushButton("Apply")
-        self.apply_btn.setFixedSize(80, 35)
-        self.apply_btn.setStyleSheet(BUTTON_STYLE)
-        self.apply_btn.clicked.connect(lambda: print(f"{title} applied:", self.input.text()))
-
-        layout.addWidget(self.input)
-        layout.addWidget(self.apply_btn)
-        self.setLayout(layout)
-
-    def _groupbox_style(self):
-        return """
-            QGroupBox {
-                font-weight: bold;
-                font-size: 14px;
-                border: 1px solid #888;
-                border-radius: 10px;
-                padding: 8px;
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 5px;
             }
-        """
+        """)
 
-    def _input_style(self):
-        return """
-            QLineEdit {
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-                font-size: 13px;
-            }
-        """
+        self.category_inputs = []  # 각 입력 필드 저장용
+        self.setLayout(self._build_ui(num_categories))
 
-
-# 3. Training dataset + 안내 텍스트
-class TrainingInputGroup(IntegerInputGroup):
-    def __init__(self):
-        super().__init__("3. Number of training dataset", "ex) 1000       Write only one unsigned integer number")
-        self.setMaximumHeight(130)
-
-        notice = QLabel(
-            "\n".join([
-                "※ Number of training dataset should be less or equal than number of category.",
-                "※ We recommend preparing at least 100 samples for each category in the training dataset."
-            ])
-        )
-        notice.setWordWrap(True)
-        notice.setStyleSheet("font-size: 11px; color: #555;")
-
+    def _build_ui(self, num_categories):
         layout = QVBoxLayout()
-        layout.addLayout(self.layout())
-        layout.addWidget(notice)
-        self.setLayout(layout)
+        layout.setSpacing(10)
+
+        for i in range(1, num_categories + 1):
+            h_layout = QHBoxLayout()
+
+            label = QLabel(f"Category {i}")
+            label.setFixedWidth(80)
+            label.setStyleSheet("font-size: 13px;")
+
+            file_input = QLineEdit()
+            file_input.setPlaceholderText("Put the train datasets of this category.")
+            file_input.setFixedHeight(35)
+            file_input.setStyleSheet("""
+                QLineEdit {
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    padding-left: 10px;
+                    font-size: 13px;
+                }
+            """)
+
+            browse_btn = QPushButton("...")
+            browse_btn.setFixedSize(35, 35)
+            browse_btn.setStyleSheet("""
+                QPushButton {
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    background-color: #ffffff;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #e9ecef;
+                }
+            """)
+            browse_btn.clicked.connect(lambda _, inp=file_input: self.browse_file(inp))
+
+            h_layout.addWidget(label)
+            h_layout.addWidget(file_input)
+            h_layout.addWidget(browse_btn)
+
+            self.category_inputs.append(file_input)
+            layout.addLayout(h_layout)
+
+        return layout
+
+    def browse_file(self, target_input):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)")
+        if file_path:
+            target_input.setText(file_path)
 
 
-# 4. 메인 SubWindow
 class SubWindow(QWidget):
-    def __init__(self):
+    def __init__(self, num_categories):
         super().__init__()
+        self.num_categories=num_categories
         self._setup_ui()
 
     def _setup_ui(self):
@@ -149,10 +125,7 @@ class SubWindow(QWidget):
         layout.setContentsMargins(20, 60, 20, 20)
         layout.setSpacing(50)
 
-        layout.addWidget(MemorySizeGroup("1. Intellino memory size"))
-        layout.addWidget(IntegerInputGroup("2. Number of category to train", "ex) 10      Write only one unsigned integer number"))
-        layout.addWidget(TrainingInputGroup())
-
+        layout.addWidget(TrainDatasetGroup(num_categories=self.num_categories))
         layout.addStretch()
         layout.addLayout(self._create_next_button())
 
@@ -183,7 +156,7 @@ class SubWindow(QWidget):
         title_bar.mouseMoveEvent = self.mouseMoveEvent
 
     def _create_next_button(self):
-        next_btn = QPushButton("Next")
+        next_btn = QPushButton("Train Start")
         next_btn.setFixedSize(100, 40)
         next_btn.setStyleSheet("""
             QPushButton {
@@ -210,6 +183,11 @@ class SubWindow(QWidget):
         if hasattr(self, 'offset') and event.buttons() == Qt.LeftButton:
             self.move(self.pos() + event.pos() - self.offset)
 
+def launch_training_window(num_categories):
+    app = QApplication(sys.argv)
+    window = SubWindow(num_categories)
+    window.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
