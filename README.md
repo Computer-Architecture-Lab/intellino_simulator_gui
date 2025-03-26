@@ -1,1 +1,0 @@
-# intellino_simulator_gui
