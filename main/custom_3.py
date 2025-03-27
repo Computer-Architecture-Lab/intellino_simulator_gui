@@ -115,6 +115,33 @@ class TrainDatasetGroup(QGroupBox):
 
         scroll_widget.setLayout(scroll_layout)
         scroll_area.setWidget(scroll_widget)
+
+        # 💄 스크롤바 스타일 적용
+        scroll_area.setStyleSheet("""
+            QScrollBar:vertical {
+                border: none;
+                background: #f1f3f5;
+                width: 10px;
+                margin: 5px 0 5px 0;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #adb5bd;
+                min-height: 25px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #868e96;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+        """)
+
         outer_layout.addWidget(scroll_area)
 
     def browse_file(self, file_input):
