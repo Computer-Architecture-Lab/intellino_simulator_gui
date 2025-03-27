@@ -1,7 +1,7 @@
 import sys
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog
+    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea
 )
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QPoint
@@ -26,7 +26,7 @@ BUTTON_STYLE = """
 """
 
 class TrainDatasetGroup(QGroupBox):
-    def __init__(self, num_categories=3):  # 기본적으로 3개 생성
+    def __init__(self, num_categories=3):
         super().__init__("6. Training datasets of each category")
         self.setStyleSheet("""
             QGroupBox {
@@ -42,13 +42,21 @@ class TrainDatasetGroup(QGroupBox):
                 padding: 0 5px;
             }
         """)
-
-        self.category_inputs = []  # 각 입력 필드 저장용
-        self.setLayout(self._build_ui(num_categories))
+        self.category_inputs = []
+        self._build_ui(num_categories)
 
     def _build_ui(self, num_categories):
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
+        outer_layout = QVBoxLayout(self)
+
+        # 스크롤바 추가
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        if num_categories >= 10:
+            scroll_area.setFixedHeight(400)  # 필요 시 이 높이는 조절 가능
+
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setSpacing(10)
 
         for i in range(1, num_categories + 1):
             h_layout = QHBoxLayout()
@@ -82,21 +90,38 @@ class TrainDatasetGroup(QGroupBox):
                     background-color: #e9ecef;
                 }
             """)
-            browse_btn.clicked.connect(self.browse_file)
+            browse_btn.clicked.connect(lambda _, fi=file_input: self.browse_file(fi))
+
+            label_input = QLineEdit()
+            label_input.setPlaceholderText("Enter label")
+            label_input.setFixedHeight(35)
+            label_input.setFixedWidth(100)
+            label_input.setStyleSheet("""
+                QLineEdit {
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    padding-left: 10px;
+                    font-size: 13px;
+                }
+            """)
 
             h_layout.addWidget(label)
             h_layout.addWidget(file_input)
             h_layout.addWidget(browse_btn)
+            h_layout.addWidget(label_input)
 
-            self.category_inputs.append(file_input)
-            layout.addLayout(h_layout)
+            self.category_inputs.append((file_input, label_input))
+            scroll_layout.addLayout(h_layout)
 
-        return layout
+        scroll_widget.setLayout(scroll_layout)
+        scroll_area.setWidget(scroll_widget)
+        outer_layout.addWidget(scroll_area)
 
-    def browse_file(self):
+    def browse_file(self, file_input):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)")
         if file_path:
-            self.file_input.setText(file_path)
+            file_input.setText(file_path)
+
 
 
 class SubWindow(QWidget):
