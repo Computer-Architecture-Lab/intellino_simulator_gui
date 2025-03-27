@@ -37,20 +37,6 @@ class Ui_MainWindow(object):
         font1.setBold(True)
         font1.setWeight(75)
         self.easyModeBtn.setFont(font1)
-<<<<<<< HEAD
-        self.easyModeBtn.setStyleSheet(u"QPushButton {\n"
-            "	background-color: qlineargradient(\n"
-            "        x1: 0, y1: 0,\n"
-            "        x2: 0, y2: 1,\n"
-            "        stop: 0 #00BFFF,\n"
-            "        stop: 1 #48D1CC\n"
-            "    );\n"
-            "    color: white;                    /* \ud14d\uc2a4\ud2b8 \uc0c9 */\n"
-            "    border: none;                    /* \uae30\ubcf8 \ud14c\ub450\ub9ac \uc81c\uac70 */\n"
-            "    border-radius: 10px;             /* \ub465\uae00\uac8c: \ubc18\uc9c0\ub984 10px */\n"
-            "    padding: 8px 16px;               /* \uc548\ucabd \uc5ec\ubc31 */\n"
-            "}")
-=======
         self.easyModeBtn.setStyleSheet(u"""
 QPushButton {
     background-color: qlineargradient(
@@ -68,26 +54,10 @@ QPushButton:hover {
     background-color: #1aa3ff;
 }
 """)  
->>>>>>> 3ec9982292a76e93028aedef61aad55551341006
         self.hardModeBtn = QPushButton(self.centralwidget)
         self.hardModeBtn.setObjectName(u"hardModeBtn")
         self.hardModeBtn.setGeometry(QRect(340, 300, 261, 131))
         self.hardModeBtn.setFont(font1)
-<<<<<<< HEAD
-        self.hardModeBtn.setStyleSheet(u"QPushButton {\n"
-            "	background-color: qlineargradient(\n"
-            "        x1: 0, y1: 0,\n"
-            "        x2: 0, y2: 1,\n"
-            "        stop: 0 #0000CD,\n"
-            "        stop: 1 #1E90FF\n"
-            "    );\n"
-            "    color: white;                    /* \ud14d\uc2a4\ud2b8 \uc0c9 */\n"
-            "    border: none;                    /* \uae30\ubcf8 \ud14c\ub450\ub9ac \uc81c\uac70 */\n"
-            "    border-radius: 10px;             /* \ub465\uae00\uac8c: \ubc18\uc9c0\ub984 10px */\n"
-            "    padding: 8px 16px;               /* \uc548\ucabd \uc5ec\ubc31 */\n"
-            "}\n"
-            "")
-=======
         self.hardModeBtn.setStyleSheet(u"""
 QPushButton {
     background-color: qlineargradient(
@@ -105,7 +75,6 @@ QPushButton:hover {
     background-color: #1aa3ff;
 }
 """)
->>>>>>> 3ec9982292a76e93028aedef61aad55551341006
         self.imageLabel = QLabel(self.centralwidget)
         self.imageLabel.setObjectName(u"imageLabel")
         self.imageLabel.setGeometry(QRect(120, 30, 391, 251))
