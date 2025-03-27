@@ -1,10 +1,10 @@
-from custom_3 import launch_training_window
+# from custom_3 import launch_training_window
 
-# 예시: 사용자로부터 숫자를 입력받음 (GUI든 콘솔이든)
-num = int(input("카테고리 개수 입력: "))
+# # 예시: 사용자로부터 숫자를 입력받음 (GUI든 콘솔이든)
+# num = int(input("카테고리 개수 입력: "))
 
-# custom_3.py의 창을 실행하면서 개수 전달
-launch_training_window(num)
+# # custom_3.py의 창을 실행하면서 개수 전달
+# launch_training_window(num)
 
 from PySide2.QtWidgets import (
     QWidget, QLabel, QPushButton, QLineEdit, QTextBrowser,
@@ -128,7 +128,7 @@ class InputVectorWindow(QWidget):
                 padding: 0 5px;
             }
         """)
-        input_layout = QHBoxLayout()
+        input_layout = QVBoxLayout()
         input_line = QLineEdit()
         input_line.setFixedHeight(35)
         input_line.setPlaceholderText("Write only one unsigned integer number")
@@ -160,19 +160,28 @@ class InputVectorWindow(QWidget):
                 color: white;
             }
         """)
-        input_layout.addWidget(input_line)
-        input_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
-        input_layout.addWidget(apply_btn)
-        input_group.setLayout(input_layout)
-
+        row_layout = QHBoxLayout()
+        row_layout.addWidget(input_line)
+        row_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
+        row_layout.addWidget(apply_btn)
+        input_layout.addLayout(row_layout)
+        # input_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
+        # input_layout.addWidget(apply_btn)
         warning_label = QLabel("\u203b Number of training dataset should be less or equal than number of category.")
         warning_label.setStyleSheet("font-size: 11px; color: gray;")
 
+        input_layout.addSpacing(10)
+        input_layout.addWidget(warning_label)
+        
+        # input_layout.addWidget(warning_label)
         main_layout.addWidget(input_group)
-        main_layout.addWidget(warning_label)
+        input_group.setLayout(input_layout)
+        # main_layout.addWidget(warning_label)
+
+        
 
         # Next button
-        next_btn = QPushButton("Next >")
+        next_btn = QPushButton("Next")
         next_btn.setFixedSize(100, 40)
         next_btn.setStyleSheet("""
             QPushButton {
