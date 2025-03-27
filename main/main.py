@@ -57,44 +57,36 @@ class MainWindow(QMainWindow):
         self.custom_window.show()
 
 
-class Sub_Window(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(800, 600)
+# class Sub_Window(QWidget):
+#     def __init__(self):
+#         super().__init__()
+#         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+#         self.setAttribute(Qt.WA_TranslucentBackground)
+#         self.setFixedSize(800, 600)
 
-        # 리소스 경로 기준: 현재 파일 위치
-        base_dir = os.path.dirname(__file__)
-        img_path2 = os.path.join(base_dir, "intellino_TM_transparent.png")
-        img_path3 = os.path.join(base_dir, "home.png")
+#         # 리소스 경로 기준: 현재 파일 위치
+#         base_dir = os.path.dirname(__file__)
+#         img_path2 = os.path.join(base_dir, "intellino_TM_transparent.png")
+#         img_path3 = os.path.join(base_dir, "home.png")
 
-        # ... (기존 UI 코드 생략)
+#         # ... (기존 UI 코드 생략)
 
-        # logo_label에 이미지 설정
-        logo_label = QLabel()
-        if os.path.exists(img_path2):
-            pixmap = QPixmap(img_path2).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            logo_label.setPixmap(pixmap)
-        else:
-            print("❌ 로고 이미지 없음:", img_path2)
+#         # logo_label에 이미지 설정
+#         logo_label = QLabel()
+#         if os.path.exists(img_path2):
+#             pixmap = QPixmap(img_path2).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+#             logo_label.setPixmap(pixmap)
+#         else:
+#             print("❌ 로고 이미지 없음:", img_path2)
 
-        # close_btn에 아이콘 설정
-        close_btn = QPushButton()
-        if os.path.exists(img_path3):
-            close_btn.setIcon(QIcon(img_path3))
-            close_btn.setIconSize(QSize(24, 24))
-        else:
-            print("❌ 버튼 아이콘 이미지 없음:", img_path3)
+#         # close_btn에 아이콘 설정
+#         close_btn = QPushButton()
+#         if os.path.exists(img_path3):
+#             close_btn.setIcon(QIcon(img_path3))
+#             close_btn.setIconSize(QSize(24, 24))
+#         else:
+#             print("❌ 버튼 아이콘 이미지 없음:", img_path3)
 
-
-
-class HardModeWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.ui = Ui_HardmodeWindow()
-        self.ui.setupUi(self)
-    
 
 
 
