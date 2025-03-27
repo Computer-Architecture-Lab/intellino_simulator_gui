@@ -45,7 +45,6 @@ class MainWindow(QMainWindow):
         self.ui.easyModeBtn.clicked.connect(self.subFunction)
         self.ui.hardModeBtn.clicked.connect(self.hardBtnFunction)
 
-
     def subFunction(self):
 
         self.sub_window = Sub_Window()
