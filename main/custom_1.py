@@ -124,7 +124,7 @@ class TrainingInputGroup(IntegerInputGroup):
 
 
 # 4. 메인 SubWindow
-class SubWindow(QWidget):
+class Custom_1_Window(QWidget):
     def __init__(self):
         super().__init__()
         self._setup_ui()
@@ -213,6 +213,6 @@ class SubWindow(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = SubWindow()
+    window = Custom_1_Window()
     window.show()
     sys.exit(app.exec_())
