@@ -3,9 +3,9 @@ import os
 from PySide2.QtGui import QPixmap
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget
 from ui_mainwindow import Ui_MainWindow  # GUI main window 
-from easymode_window import Ui_EasymodeWindow   # easymode window
 from hardmode_window import Ui_HardmodeWindow   # easymode window
 from existing_mode_window import SubWindow   # easymode window
+from custom_1 import Custom_1_Window         # custom_1 window
 
 
 class MainWindow(QMainWindow):
@@ -43,63 +43,49 @@ class MainWindow(QMainWindow):
 
 
         self.ui.easyModeBtn.clicked.connect(self.subFunction)
-        self.ui.hardModeBtn.clicked.connect(self.hardBtnFunction)
+        self.ui.hardModeBtn.clicked.connect(self.customFunction)
 
     def subFunction(self):
 
-        self.sub_window = Sub_Window()
+        self.sub_window = SubWindow()
         self.sub_window.show()
 
-    def hardBtnFunction(self):
+    def customFunction(self):
 
-        self.easyMode_window = HardModeWindow()
-        self.easyMode_window.show()
-
-
-class EasyModeWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.ui = Ui_EasymodeWindow()
-        self.ui.setupUi(self)
-
-class Sub_Window(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(800, 600)
-
-        # 리소스 경로 기준: 현재 파일 위치
-        base_dir = os.path.dirname(__file__)
-        img_path2 = os.path.join(base_dir, "intellino_TM_transparent.png")
-        img_path3 = os.path.join(base_dir, "home.png")
-
-        # ... (기존 UI 코드 생략)
-
-        # logo_label에 이미지 설정
-        logo_label = QLabel()
-        if os.path.exists(img_path2):
-            pixmap = QPixmap(img_path2).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            logo_label.setPixmap(pixmap)
-        else:
-            print("❌ 로고 이미지 없음:", img_path2)
-
-        # close_btn에 아이콘 설정
-        close_btn = QPushButton()
-        if os.path.exists(img_path3):
-            close_btn.setIcon(QIcon(img_path3))
-            close_btn.setIconSize(QSize(24, 24))
-        else:
-            print("❌ 버튼 아이콘 이미지 없음:", img_path3)
+        self.custom_window = Custom_1_Window()
+        self.custom_window.show()
 
 
+# class Sub_Window(QWidget):
+#     def __init__(self):
+#         super().__init__()
+#         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+#         self.setAttribute(Qt.WA_TranslucentBackground)
+#         self.setFixedSize(800, 600)
 
-class HardModeWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.ui = Ui_HardmodeWindow()
-        self.ui.setupUi(self)
-    
+#         # 리소스 경로 기준: 현재 파일 위치
+#         base_dir = os.path.dirname(__file__)
+#         img_path2 = os.path.join(base_dir, "intellino_TM_transparent.png")
+#         img_path3 = os.path.join(base_dir, "home.png")
+
+#         # ... (기존 UI 코드 생략)
+
+#         # logo_label에 이미지 설정
+#         logo_label = QLabel()
+#         if os.path.exists(img_path2):
+#             pixmap = QPixmap(img_path2).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+#             logo_label.setPixmap(pixmap)
+#         else:
+#             print("❌ 로고 이미지 없음:", img_path2)
+
+#         # close_btn에 아이콘 설정
+#         close_btn = QPushButton()
+#         if os.path.exists(img_path3):
+#             close_btn.setIcon(QIcon(img_path3))
+#             close_btn.setIconSize(QSize(24, 24))
+#         else:
+#             print("❌ 버튼 아이콘 이미지 없음:", img_path3)
+
 
 
 
