@@ -3,9 +3,9 @@ import os
 from PySide2.QtGui import QPixmap
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget
 from ui_mainwindow import Ui_MainWindow  # GUI main window 
-from easymode_window import Ui_EasymodeWindow   # easymode window
 from hardmode_window import Ui_HardmodeWindow   # easymode window
 from existing_mode_window import SubWindow   # easymode window
+from custom_1 import Custom_1_Window         # custom_1 window
 
 
 class MainWindow(QMainWindow):
@@ -43,25 +43,19 @@ class MainWindow(QMainWindow):
 
 
         self.ui.easyModeBtn.clicked.connect(self.subFunction)
-        self.ui.hardModeBtn.clicked.connect(self.hardBtnFunction)
+        self.ui.hardModeBtn.clicked.connect(self.customFunction)
 
 
     def subFunction(self):
 
-        self.sub_window = Sub_Window()
+        self.sub_window = SubWindow()
         self.sub_window.show()
 
-    def hardBtnFunction(self):
+    def customFunction(self):
 
-        self.easyMode_window = HardModeWindow()
-        self.easyMode_window.show()
+        self.custom_window = Custom_1_Window()
+        self.custom_window.show()
 
-
-class EasyModeWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.ui = Ui_EasymodeWindow()
-        self.ui.setupUi(self)
 
 class Sub_Window(QWidget):
     def __init__(self):
