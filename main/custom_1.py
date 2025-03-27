@@ -172,7 +172,16 @@ class Custom_1_Window(QWidget):
         close_btn.setIcon(QIcon("main/home.png"))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
-        close_btn.setStyleSheet("border: none; background-color: transparent;")
+        close_btn.setStyleSheet(("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #dee2e6;
+                border-radius: 17px;
+            }
+            """))
         close_btn.clicked.connect(self.close)
 
         layout.addWidget(logo_label)
