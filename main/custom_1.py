@@ -124,7 +124,7 @@ class TrainingInputGroup(IntegerInputGroup):
 
 
 # 4. 메인 SubWindow
-class SubWindow(QWidget):
+class Custom_1_Window(QWidget):
     def __init__(self):
         super().__init__()
         self._setup_ui()
@@ -172,7 +172,16 @@ class SubWindow(QWidget):
         close_btn.setIcon(QIcon("home.png"))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
-        close_btn.setStyleSheet("border: none; background-color: transparent;")
+        close_btn.setStyleSheet(("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #dee2e6;
+                border-radius: 17px;
+            }
+            """))
         close_btn.clicked.connect(self.close)
 
         layout.addWidget(logo_label)
@@ -213,6 +222,6 @@ class SubWindow(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = SubWindow()
+    window = Custom_1_Window()
     window.show()
     sys.exit(app.exec_())
