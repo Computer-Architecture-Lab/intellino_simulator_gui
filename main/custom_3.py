@@ -5,6 +5,7 @@ from PySide2.QtWidgets import (
 )
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QPoint
+# from custom_1 import IntegerInputGroup
 
 # 공통 버튼 스타일
 BUTTON_STYLE = """
@@ -152,7 +153,7 @@ class TrainDatasetGroup(QGroupBox):
 
 
 class SubWindow(QWidget):
-    def __init__(self, num_categories):
+    def __init__(self, num_categories=3):
         super().__init__()
         self.num_categories=num_categories
         self._setup_ui()
@@ -197,7 +198,16 @@ class SubWindow(QWidget):
         close_btn.setIcon(QIcon("main/home.png"))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
-        close_btn.setStyleSheet("border: none; background-color: transparent;")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #dee2e6;
+                border-radius: 17px;
+            }
+        """)
         close_btn.clicked.connect(self.close)
 
         layout.addWidget(logo_label)
