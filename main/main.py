@@ -45,14 +45,7 @@ class MainWindow(QMainWindow):
             else:
                 print("이미지 파일 없음:", img_path3)
 
-<<<<<<< HEAD
-
-        self.ui.easyModeBtn.clicked.connect(self.subFunction)
-        self.ui.hardModeBtn.clicked.connect(self.customFunction)
-
-=======
     # 버튼 눌렀을 때 실행할 함수
->>>>>>> 388291cbd93889ce7a60b0a879aa12866dc6b9f8
     def subFunction(self):
         self.sub_window = SubWindow()
         self.sub_window.show()
