@@ -8,18 +8,22 @@
 
 from PySide2.QtWidgets import (
     QWidget, QLabel, QPushButton, QLineEdit, QTextBrowser,
-    QVBoxLayout, QHBoxLayout, QGroupBox, QApplication, QGraphicsDropShadowEffect
+    QVBoxLayout, QHBoxLayout, QGroupBox, QApplication, QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect
 )
 from PySide2.QtGui import QPixmap, QIcon, QFont, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QPoint
+from PySide2.QtCore import Qt, QSize, QPoint, QPropertyAnimation
 import os
+from custom_3 import SubWindow
+
 
 class InputVectorWindow(QWidget):
-    def __init__(self):
+    def __init__(self, num_categories):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(800, 800)
+        self.num_categories = num_categories  
 
         # 그림자 효과 추가
         shadow = QGraphicsDropShadowEffect(self)
@@ -195,6 +199,7 @@ class InputVectorWindow(QWidget):
                 background-color: #dee2e6;
             }
         """)
+        next_btn.clicked.connect(self.nextFunction)
         main_layout.addStretch()
         main_layout.addWidget(next_btn, alignment=Qt.AlignRight)
 
@@ -202,6 +207,21 @@ class InputVectorWindow(QWidget):
         self.offset = None
         title_bar.mousePressEvent = self.mousePressEvent
         title_bar.mouseMoveEvent = self.mouseMoveEvent
+
+    def nextFunction(self):
+        self.custom3 = SubWindow(num_categories=self.num_categories)
+        self.custom3.show()
+
+        # 페이드아웃 기능
+        effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(effect)
+        self.anim = QPropertyAnimation(effect, b"opacity")
+        self.anim.setDuration(500)
+        self.anim.setStartValue(1)
+        self.anim.setEndValue(0)
+        self.anim.finished.connect(self.close)
+        self.anim.start()
+
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:

@@ -6,6 +6,7 @@ from ui_mainwindow import Ui_MainWindow  # GUI main window
 from hardmode_window import Ui_HardmodeWindow   # easymode window
 from existing_mode_window import SubWindow   # easymode window
 from custom_1 import Custom_1_Window         # custom_1 window
+# from custom_2 import InputVectorWindow
 
 
 class MainWindow(QMainWindow):
@@ -13,6 +14,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        # BTN click시 정의
+        self.ui.easyModeBtn.clicked.connect(self.subFunction)
+        self.ui.hardModeBtn.clicked.connect(self.customFunction)
 
 
         # 이미지 로딩
@@ -41,18 +45,13 @@ class MainWindow(QMainWindow):
             else:
                 print("이미지 파일 없음:", img_path3)
 
-
-        self.ui.easyModeBtn.clicked.connect(self.subFunction)
-        self.ui.hardModeBtn.clicked.connect(self.customFunction)
-
-
+    # 버튼 눌렀을 때 실행할 함수
     def subFunction(self):
-
         self.sub_window = SubWindow()
         self.sub_window.show()
 
+    # 버튼 눌렀을 때 실행할 함수
     def customFunction(self):
-
         self.custom_window = Custom_1_Window()
         self.custom_window.show()
 

@@ -1,10 +1,12 @@
 import sys
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QLineEdit, QGraphicsDropShadowEffect
+    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QGraphicsOpacityEffect
 )
+from PySide2.QtCore import QPropertyAnimation
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from PySide2.QtCore import Qt, QSize, QPoint
+from custom_2 import InputVectorWindow
 
 # 공통 버튼 스타일
 BUTTON_STYLE = """
@@ -74,11 +76,17 @@ class IntegerInputGroup(QGroupBox):
         self.apply_btn = QPushButton("Apply")
         self.apply_btn.setFixedSize(80, 35)
         self.apply_btn.setStyleSheet(BUTTON_STYLE)
-        self.apply_btn.clicked.connect(lambda: print(f"{title} applied:", self.input.text()))
+        # self.apply_btn.clicked.connect(lambda: print(f"{title} applied:", self.input.text()))
+        self.apply_btn.clicked.connect(self.save_category_num)
 
         layout.addWidget(self.input)
         layout.addWidget(self.apply_btn)
         self.setLayout(layout)
+
+    def save_category_num(self):
+        self.category_num = int(self.input.text())
+        print(f"applied:", self.input.text())
+
 
     def _groupbox_style(self):
         return """
@@ -127,7 +135,8 @@ class TrainingInputGroup(IntegerInputGroup):
 class Custom_1_Window(QWidget):
     def __init__(self):
         super().__init__()
-        self._setup_ui()
+        self._setup_ui()       
+        
 
     def _setup_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
@@ -150,11 +159,13 @@ class Custom_1_Window(QWidget):
         layout.setSpacing(50)
 
         layout.addWidget(MemorySizeGroup("1. Intellino memory size"))
-        layout.addWidget(IntegerInputGroup("2. Number of category to train", "ex) 10      Write only one unsigned integer number"))
+        self.category_input = IntegerInputGroup("2. Number of category to train", "ex)       10 Write only one unsigned integer number")
+        layout.addWidget(self.category_input)
         layout.addWidget(TrainingInputGroup())
 
         layout.addStretch()
         layout.addLayout(self._create_next_button())
+        
 
     def _add_title_bar(self, parent):
         title_bar = QWidget(parent)
@@ -206,6 +217,7 @@ class Custom_1_Window(QWidget):
                 background-color: #dee2e6;
             }
         """)
+        next_btn.clicked.connect(self.nextFunction)
         layout = QHBoxLayout()
         layout.addStretch()
         layout.addWidget(next_btn)
@@ -216,8 +228,25 @@ class Custom_1_Window(QWidget):
             self.offset = event.pos()
 
     def mouseMoveEvent(self, event: QMouseEvent):
+
         if hasattr(self, 'offset') and event.buttons() == Qt.LeftButton:
             self.move(self.pos() + event.pos() - self.offset)
+
+    def nextFunction(self):
+        num = self.category_input.category_num
+        self.custom2 = InputVectorWindow(num_categories=num)
+        self.custom2.show()
+
+        # 페이드아웃 기능
+        effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(effect)
+        self.anim = QPropertyAnimation(effect, b"opacity")
+        self.anim.setDuration(500)
+        self.anim.setStartValue(1)
+        self.anim.setEndValue(0)
+        self.anim.finished.connect(self.close)
+        self.anim.start()
+        
 
 
 if __name__ == "__main__":
