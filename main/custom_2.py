@@ -1,25 +1,21 @@
-from custom_3 import launch_training_window
-
-## 예시: 사용자로부터 숫자를 입력받음 (GUI든 콘솔이든)
-#num = int(input("카테고리 개수 입력: "))
-#
-## custom_3.py의 창을 실행하면서 개수 전달
-#launch_training_window(num)
-
 from PySide2.QtWidgets import (
     QWidget, QLabel, QPushButton, QLineEdit, QTextBrowser,
-    QVBoxLayout, QHBoxLayout, QGroupBox, QApplication, QGraphicsDropShadowEffect
+    QVBoxLayout, QHBoxLayout, QGroupBox, QApplication, QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect
 )
 from PySide2.QtGui import QPixmap, QIcon, QFont, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QPoint
+from PySide2.QtCore import Qt, QSize, QPoint, QPropertyAnimation
 import os
+from custom_3 import SubWindow
+
 
 class InputVectorWindow(QWidget):
-    def __init__(self):
+    def __init__(self, num_categories):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(800, 800)
+        self.num_categories = num_categories  
 
         # 그림자 효과 추가
         shadow = QGraphicsDropShadowEffect(self)
@@ -128,7 +124,7 @@ class InputVectorWindow(QWidget):
                 padding: 0 5px;
             }
         """)
-        input_layout = QHBoxLayout()
+        input_layout = QVBoxLayout()
         input_line = QLineEdit()
         input_line.setFixedHeight(35)
         input_line.setPlaceholderText("Write only one unsigned integer number")
@@ -160,19 +156,28 @@ class InputVectorWindow(QWidget):
                 color: white;
             }
         """)
-        input_layout.addWidget(input_line)
-        input_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
-        input_layout.addWidget(apply_btn)
-        input_group.setLayout(input_layout)
-
+        row_layout = QHBoxLayout()
+        row_layout.addWidget(input_line)
+        row_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
+        row_layout.addWidget(apply_btn)
+        input_layout.addLayout(row_layout)
+        # input_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
+        # input_layout.addWidget(apply_btn)
         warning_label = QLabel("\u203b Number of training dataset should be less or equal than number of category.")
         warning_label.setStyleSheet("font-size: 11px; color: gray;")
 
+        input_layout.addSpacing(10)
+        input_layout.addWidget(warning_label)
+        
+        # input_layout.addWidget(warning_label)
         main_layout.addWidget(input_group)
-        main_layout.addWidget(warning_label)
+        input_group.setLayout(input_layout)
+        # main_layout.addWidget(warning_label)
+
+        
 
         # Next button
-        next_btn = QPushButton("Next >")
+        next_btn = QPushButton("Next")
         next_btn.setFixedSize(100, 40)
         next_btn.setStyleSheet("""
             QPushButton {
@@ -186,6 +191,7 @@ class InputVectorWindow(QWidget):
                 background-color: #dee2e6;
             }
         """)
+        next_btn.clicked.connect(self.nextFunction)
         main_layout.addStretch()
         main_layout.addWidget(next_btn, alignment=Qt.AlignRight)
 
@@ -193,6 +199,21 @@ class InputVectorWindow(QWidget):
         self.offset = None
         title_bar.mousePressEvent = self.mousePressEvent
         title_bar.mouseMoveEvent = self.mouseMoveEvent
+
+    def nextFunction(self):
+        self.custom3 = SubWindow(num_categories=self.num_categories)
+        self.custom3.show()
+
+        # 페이드아웃 기능
+        effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(effect)
+        self.anim = QPropertyAnimation(effect, b"opacity")
+        self.anim.setDuration(500)
+        self.anim.setStartValue(1)
+        self.anim.setEndValue(0)
+        self.anim.finished.connect(self.close)
+        self.anim.start()
+
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:

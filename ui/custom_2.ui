@@ -21,8 +21,8 @@
     <rect>
      <x>30</x>
      <y>80</y>
-     <width>741</width>
-     <height>341</height>
+     <width>740</width>
+     <height>340</height>
     </rect>
    </property>
    <property name="styleSheet">
@@ -137,14 +137,36 @@
     </rect>
    </property>
    <property name="styleSheet">
-    <string notr="true">font-weight: bold;
-                font-size: 10px;
-                border: 1px solid #888;
-                border-radius: 10px;
-                padding: 8px</string>
+    <string notr="true"/>
    </property>
    <property name="text">
-    <string>PushButton</string>
+    <string>Next</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>30</x>
+     <y>20</y>
+     <width>101</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>inellino</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_3">
+   <property name="geometry">
+    <rect>
+     <x>710</x>
+     <y>20</y>
+     <width>51</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>home</string>
    </property>
   </widget>
  </widget>
