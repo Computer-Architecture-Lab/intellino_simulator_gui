@@ -89,12 +89,10 @@ QPushButton:hover {
         self.retranslateUi(MainWindow)
 
         QMetaObject.connectSlotsByName(MainWindow)
-    # setupUi
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
         self.easyModeBtn.setText(QCoreApplication.translate("MainWindow", u"Existing datasets mode", None))
         self.hardModeBtn.setText(QCoreApplication.translate("MainWindow", u"Custom datasets mode", None))
         self.imageLabel.setText("")
-    # retranslateUi
 
