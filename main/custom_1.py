@@ -159,7 +159,7 @@ class Custom_1_Window(QWidget):
         layout.setSpacing(50)
 
         layout.addWidget(MemorySizeGroup("1. Intellino memory size"))
-        self.category_input = IntegerInputGroup("2. Number of category to train", "ex)       10 Write only one unsigned integer number")
+        self.category_input = IntegerInputGroup("2. Number of category to train", "ex) 10       Write only one unsigned integer number")
         layout.addWidget(self.category_input)
         layout.addWidget(TrainingInputGroup())
 

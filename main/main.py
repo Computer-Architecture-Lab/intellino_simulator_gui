@@ -30,21 +30,6 @@ class MainWindow(QMainWindow):
         else:
             print("이미지 파일 없음:", img_path)
 
-        # intellino_TM_transparent.png → 다른 QLabel에 표시한다고 가정 (예: logoLabel)
-        if hasattr(self.ui, 'logo_Label'):
-            if os.path.exists(img_path2):
-                self.ui.logoLabel.setPixmap(QPixmap(img_path2).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            else:
-                print("이미지 파일 없음:", img_path2)
-
-        # home.png → 버튼 아이콘으로 설정 (예: closeBtn)
-        if hasattr(self.ui, 'close_btn'):
-            if os.path.exists(img_path3):
-                self.ui.closeBtn.setIcon(QIcon(img_path3))
-                self.ui.closeBtn.setIconSize(QSize(24, 24))
-            else:
-                print("이미지 파일 없음:", img_path3)
-
     # 버튼 눌렀을 때 실행할 함수
     def subFunction(self):
         self.sub_window = SubWindow()
