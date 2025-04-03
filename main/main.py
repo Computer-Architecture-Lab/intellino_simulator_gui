@@ -3,10 +3,10 @@ import os
 from PySide2.QtGui import QPixmap
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget
 from ui_mainwindow import Ui_MainWindow  # GUI main window 
-from hardmode_window import Ui_HardmodeWindow   # easymode window
 from existing_mode_window import SubWindow   # easymode window
 from custom_1 import Custom_1_Window         # custom_1 window
-# from custom_2 import InputVectorWindow
+
+
 
 
 class MainWindow(QMainWindow):
@@ -14,10 +14,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+
         # BTN click시 정의
         self.ui.easyModeBtn.clicked.connect(self.subFunction)
         self.ui.hardModeBtn.clicked.connect(self.customFunction)
-
 
         # 이미지 로딩
         img_path = os.path.join(os.path.dirname(__file__), "intellino_TM.png")
@@ -54,8 +54,6 @@ class MainWindow(QMainWindow):
     def customFunction(self):
         self.custom_window = Custom_1_Window()
         self.custom_window.show()
-
-
 
 
 #main
