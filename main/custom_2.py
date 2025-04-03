@@ -1,55 +1,201 @@
+import sys
 from PySide2.QtWidgets import (
-    QWidget, QLabel, QPushButton, QLineEdit, QTextBrowser,
-    QVBoxLayout, QHBoxLayout, QGroupBox, QApplication, QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect
+    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
+    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea
 )
-from PySide2.QtGui import QPixmap, QIcon, QFont, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QPoint, QPropertyAnimation
-import os
-from custom_3 import SubWindow
+from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
+from PySide2.QtCore import Qt, QSize, QPoint
+# from custom_1 import IntegerInputGroup
+
+# 공통 버튼 스타일
+BUTTON_STYLE = """
+    QPushButton {
+        background-color: #ffffff;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        padding: 5px;
+        font-weight: bold;
+        font-size: 13px;
+    }
+    QPushButton:hover {
+        background-color: #e9ecef;
+    }
+    QPushButton:pressed {
+        background-color: #adb5bd;
+        color: white;
+    }
+"""
+
+class TrainDatasetGroup(QGroupBox):
+    def __init__(self, num_categories=3):
+        super().__init__("6. Training datasets of each category")
+        self.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #b0b0b0;
+                border-radius: 10px;
+                margin-top: 10px;
+                padding: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 5px;
+            }
+        """)
+        self.category_inputs = []
+        self._build_ui(num_categories)
+
+    def _build_ui(self, num_categories):
+        outer_layout = QVBoxLayout(self)
+
+        # 스크롤바 추가
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        if num_categories >= 10:
+            scroll_area.setFixedHeight(400)  # 필요 시 이 높이는 조절 가능
+
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setSpacing(10)
+
+        for i in range(1, num_categories + 1):
+            h_layout = QHBoxLayout()
+
+            label = QLabel(f"Category {i}")
+            label.setFixedWidth(80)
+            label.setStyleSheet("font-size: 13px;")
+
+            file_input = QLineEdit()
+            file_input.setPlaceholderText("Put the train datasets of this category.")
+            file_input.setFixedHeight(35)
+            file_input.setStyleSheet("""
+                QLineEdit {
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    padding-left: 10px;
+                    font-size: 13px;
+                }
+            """)
+
+            browse_btn = QPushButton("...")
+            browse_btn.setFixedSize(35, 35)
+            browse_btn.setStyleSheet("""
+                QPushButton {
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    background-color: #ffffff;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #e9ecef;
+                }
+            """)
+            browse_btn.clicked.connect(lambda _, fi=file_input: self.browse_file(fi))
+
+            label_input = QLineEdit()
+            label_input.setPlaceholderText("Enter label")
+            label_input.setFixedHeight(35)
+            label_input.setFixedWidth(100)
+            label_input.setStyleSheet("""
+                QLineEdit {
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    padding-left: 10px;
+                    font-size: 13px;
+                }
+            """)
+
+            h_layout.addWidget(label)
+            h_layout.addWidget(file_input)
+            h_layout.addWidget(browse_btn)
+            h_layout.addWidget(label_input)
+
+            self.category_inputs.append((file_input, label_input))
+            scroll_layout.addLayout(h_layout)
+
+        scroll_widget.setLayout(scroll_layout)
+        scroll_area.setWidget(scroll_widget)
+
+        # 💄 스크롤바 스타일 적용
+        scroll_area.setStyleSheet("""
+            QScrollBar:vertical {
+                border: none;
+                background: #f1f3f5;
+                width: 10px;
+                margin: 5px 0 5px 0;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #adb5bd;
+                min-height: 25px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #868e96;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+        """)
+
+        outer_layout.addWidget(scroll_area)
+
+    def browse_file(self, file_input):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)")
+        if file_path:
+            file_input.setText(file_path)
 
 
-class InputVectorWindow(QWidget):
-    def __init__(self, num_categories):
+
+class SubWindow(QWidget):
+    def __init__(self, num_categories=3):
         super().__init__()
+        self.num_categories=num_categories
+        self._setup_ui()
+
+    def _setup_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(800, 800)
-        self.num_categories = num_categories  
 
-        # 그림자 효과 추가
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(30)
-        shadow.setXOffset(0)
-        shadow.setYOffset(0)
-        shadow.setColor(QColor(0, 0, 0, 120))
+        shadow.setColor(QColor(0, 0, 0, 100))
         self.setGraphicsEffect(shadow)
 
-        # 배경 컨테이너 위젯
         container = QWidget(self)
-        container.setStyleSheet("""
-            QWidget {
-                background-color: white;
-                border-radius: 15px;
-            }
-        """)
+        container.setStyleSheet("background-color: white; border-radius: 15px;")
         container.setGeometry(0, 0, 800, 800)
 
-        # 타이틀바
-        title_bar = QWidget(container)
+        self._add_title_bar(container)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 60, 20, 20)
+        layout.setSpacing(50)
+
+        layout.addWidget(TrainDatasetGroup(num_categories=self.num_categories))
+        layout.addStretch()
+        layout.addLayout(self._create_next_button())
+
+    def _add_title_bar(self, parent):
+        title_bar = QWidget(parent)
         title_bar.setGeometry(0, 0, 800, 50)
         title_bar.setStyleSheet("background-color: #f1f3f5; border-top-left-radius: 15px; border-top-right-radius: 15px;")
-        title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(15, 0, 15, 0)
 
-        base_dir = os.path.dirname(__file__)
+        layout = QHBoxLayout(title_bar)
+        layout.setContentsMargins(15, 0, 15, 0)
+
         logo_label = QLabel()
-        logo_path = os.path.join(base_dir, "intellino_TM_transparent.png")
-        if os.path.exists(logo_path):
-            logo_label.setPixmap(QPixmap(logo_path).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon(os.path.join(base_dir, "home.png")))
+        close_btn.setIcon(QIcon("main/home.png"))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
@@ -64,120 +210,15 @@ class InputVectorWindow(QWidget):
         """)
         close_btn.clicked.connect(self.close)
 
-        title_layout.addWidget(logo_label)
-        title_layout.addStretch()
-        title_layout.addWidget(close_btn)
+        layout.addWidget(logo_label)
+        layout.addStretch()
+        layout.addWidget(close_btn)
 
-        # 본문 레이아웃
-        main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(20, 60, 20, 20)
-        main_layout.setSpacing(20)
+        title_bar.mousePressEvent = self.mousePressEvent
+        title_bar.mouseMoveEvent = self.mouseMoveEvent
 
-        # Section 4: Available input vector length
-        available_group = QGroupBox("4. Available input vector length")
-        available_group.setStyleSheet("""
-            QGroupBox {
-                 font-weight: bold;
-                font-size: 14px;
-                border: 1px solid #888;
-                border-radius: 10px;
-                padding: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 5px;
-            }
-        """)
-        available_layout = QVBoxLayout()
-        available_box = QTextBrowser()
-        available_box.setText(
-            "계산 결과 표시"
-            
-        )
-        available_box.setStyleSheet("""
-            QTextBrowser {
-                border: none;
-                padding: 5px;
-                background-color: #f9f9f9;
-            }
-        """)
-        available_layout.addWidget(available_box)
-        available_group.setLayout(available_layout)
-        main_layout.addWidget(available_group)
-
-        main_layout.addSpacing(30)                   #4번 groupbox와 5번 groupbox사이 간격 조절절
-
-        # Section 5: Input vector length
-        input_group = QGroupBox("5. Input vector length")
-        input_group.setStyleSheet("""
-            QGroupBox {
-                 font-weight: bold;
-                font-size: 14px;
-                border: 1px solid #888;
-                border-radius: 10px;
-                padding: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 5px;
-            }
-        """)
-        input_layout = QVBoxLayout()
-        input_line = QLineEdit()
-        input_line.setFixedHeight(35)
-        input_line.setPlaceholderText("Write only one unsigned integer number")
-        input_line.setStyleSheet("""
-            QLineEdit {
-                font-size: 13px;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-                padding-left: 10px;
-                background-color: #ffffff;
-            }
-        """)
-        apply_btn = QPushButton("Apply")
-        apply_btn.setFixedSize(80, 35)
-        apply_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ffffff;
-                border: 1px solid #ccc;
-                border-radius: 10px;
-                padding: 5px;
-                font-weight: bold;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #e9ecef;
-            }
-            QPushButton:pressed {
-                background-color: #adb5bd;
-                color: white;
-            }
-        """)
-        row_layout = QHBoxLayout()
-        row_layout.addWidget(input_line)
-        row_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
-        row_layout.addWidget(apply_btn)
-        input_layout.addLayout(row_layout)
-        # input_layout.addSpacing(15)         # 텍스트 입력 창과 버튼 사이 간격 조절
-        # input_layout.addWidget(apply_btn)
-        warning_label = QLabel("\u203b Number of training dataset should be less or equal than number of category.")
-        warning_label.setStyleSheet("font-size: 11px; color: gray;")
-
-        input_layout.addSpacing(10)
-        input_layout.addWidget(warning_label)
-        
-        # input_layout.addWidget(warning_label)
-        main_layout.addWidget(input_group)
-        input_group.setLayout(input_layout)
-        # main_layout.addWidget(warning_label)
-
-        
-
-        # Next button
-        next_btn = QPushButton("Next")
+    def _create_next_button(self):
+        next_btn = QPushButton("Train Start")
         next_btn.setFixedSize(100, 40)
         next_btn.setStyleSheet("""
             QPushButton {
@@ -191,42 +232,27 @@ class InputVectorWindow(QWidget):
                 background-color: #dee2e6;
             }
         """)
-        next_btn.clicked.connect(self.nextFunction)
-        main_layout.addStretch()
-        main_layout.addWidget(next_btn, alignment=Qt.AlignRight)
-
-        # 드래그 이동 이벤트
-        self.offset = None
-        title_bar.mousePressEvent = self.mousePressEvent
-        title_bar.mouseMoveEvent = self.mouseMoveEvent
-
-    def nextFunction(self):
-        self.custom3 = SubWindow(num_categories=self.num_categories)
-        self.custom3.show()
-
-        # 페이드아웃 기능
-        effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(effect)
-        self.anim = QPropertyAnimation(effect, b"opacity")
-        self.anim.setDuration(500)
-        self.anim.setStartValue(1)
-        self.anim.setEndValue(0)
-        self.anim.finished.connect(self.close)
-        self.anim.start()
-
+        layout = QHBoxLayout()
+        layout.addStretch()
+        layout.addWidget(next_btn)
+        return layout
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
             self.offset = event.pos()
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        if self.offset is not None and event.buttons() == Qt.LeftButton:
+        if hasattr(self, 'offset') and event.buttons() == Qt.LeftButton:
             self.move(self.pos() + event.pos() - self.offset)
 
+def launch_training_window(num_categories):
+    app = QApplication(sys.argv)
+    window = SubWindow(num_categories)
+    window.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    import sys
     app = QApplication(sys.argv)
-    window = InputVectorWindow()
+    window = SubWindow()
     window.show()
     sys.exit(app.exec_())
