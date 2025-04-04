@@ -39,6 +39,8 @@ class MainWindow(QMainWindow):
         self.custom_window.show()
 
 
+
+
 #main
 if __name__ == "__main__":
     app = QApplication(sys.argv)

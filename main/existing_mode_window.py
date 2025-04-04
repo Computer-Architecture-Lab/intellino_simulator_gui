@@ -4,7 +4,7 @@ import subprocess
 from PySide2.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, \
     QGraphicsDropShadowEffect, QGroupBox, QProgressBar, QLineEdit, QFileDialog, QTextEdit, QSizePolicy
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QTimer, QPoint
+from PySide2.QtCore import Qt, QSize, QTimer, Signal, QPoint
 
 
 
@@ -64,6 +64,7 @@ class TrainSection(QWidget):
 
 # 3. Inference 섹션 (최소 높이)
 class InferenceSection(QWidget):
+    inference_requested = Signal(str)  # 파일 경로를 전달
     def __init__(self):
         super().__init__()
 
@@ -113,6 +114,7 @@ class InferenceSection(QWidget):
         """)
         browse_btn.clicked.connect(self.browse_file)
 
+        
         start_btn = QPushButton("Start")
         start_btn.setFixedSize(60, 35)
         start_btn.setStyleSheet("""
@@ -130,6 +132,7 @@ class InferenceSection(QWidget):
                 color: white;
             }
         """)
+        start_btn.clicked.connect(self.startFunction)
 
         inference_layout.addWidget(self.file_input)
         inference_layout.addWidget(browse_btn)
@@ -143,6 +146,12 @@ class InferenceSection(QWidget):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)")
         if file_path:
             self.file_input.setText(file_path)
+
+    def startFunction(self):
+        file_path = self.file_input.text()
+        print(f"[DEBUG] Start button clicked, file = {file_path}")  #
+        if file_path:
+            self.inference_requested.emit(file_path)
 
 
 # 4. Result 섹션 (가변 크기 + 스크롤 가능)
@@ -169,7 +178,7 @@ class ResultSection(QWidget):
         result_layout = QVBoxLayout()
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setText("Inference result : 7")
+        self.result_text.setText("")
         self.result_text.setStyleSheet("""
             QTextEdit {
                 font-size: 14px;
@@ -316,6 +325,7 @@ class SubWindow(QWidget):
         # 3. Inference (최소)
         self.inference_section = InferenceSection()
         layout.addWidget(self.inference_section)
+        self.inference_section.inference_requested.connect(self.run_inference)
 
         # 4. Result (가변 스크롤)
         self.result_section = ResultSection()
@@ -324,6 +334,31 @@ class SubWindow(QWidget):
         self.offset = None
         title_bar.mousePressEvent = self.mousePressEvent
         title_bar.mouseMoveEvent = self.mouseMoveEvent
+
+    # run inference
+    def run_inference(self, file_path):
+        print(f"[DEBUG] run_inference called with: {file_path}")
+        test_path = os.path.join(os.path.dirname(__file__), "mnist.py")
+        self.infer_process = subprocess.Popen([sys.executable, test_path, "infer"],
+                                          stdout=subprocess.PIPE,
+                                          stderr=subprocess.STDOUT,
+                                          universal_newlines=True,
+                                          bufsize=1)
+         
+        self.result_section.result_text.clear()
+        self.infer_timer = QTimer()
+        self.infer_timer.timeout.connect(self.read_inference_output)
+        self.infer_timer.start(10)
+
+    def read_inference_output(self):
+        if self.infer_process.stdout:
+            line = self.infer_process.stdout.readline()
+            # print(f"[DEBUG] read: {line.strip()}")    # 디버깅용
+            if line:
+                self.result_section.result_text.append(line.strip())
+
+            if self.infer_process.poll() is not None:
+                self.infer_timer.stop()
 
 
     def mousePressEvent(self, event: QMouseEvent):
@@ -335,7 +370,7 @@ class SubWindow(QWidget):
             self.move(self.pos() + event.pos() - self.offset)
 
     def mnistFunction(self):
-        train_path = os.path.join(os.path.dirname(__file__), "mnist_train.py")
+        train_path = os.path.join(os.path.dirname(__file__), "mnist.py")
         self.process = subprocess.Popen([sys.executable, train_path], stdout=subprocess.PIPE,
                                             stderr=subprocess.STDOUT,
                                             universal_newlines=True,
@@ -366,10 +401,6 @@ class SubWindow(QWidget):
             
 
         # def speechFunction(self):
-
-    
-        
-
 
 
 if __name__ == "__main__":
