@@ -5,7 +5,8 @@ from PySide2.QtWidgets import (
 )
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QPoint
-# from custom_1 import IntegerInputGroup
+from functools import partial  # TypeError 방지. 안정적인 파일 경로 전달
+
 
 # 공통 버튼 스타일
 BUTTON_STYLE = """
@@ -91,7 +92,7 @@ class TrainDatasetGroup(QGroupBox):
                     background-color: #e9ecef;
                 }
             """)
-            browse_btn.clicked.connect(lambda _, fi=file_input: self.browse_file(fi))
+            browse_btn.clicked.connect(partial(self.browse_file, file_input))
 
             label_input = QLineEdit()
             label_input.setPlaceholderText("Enter label")
@@ -146,13 +147,12 @@ class TrainDatasetGroup(QGroupBox):
         outer_layout.addWidget(scroll_area)
 
     def browse_file(self, file_input):
+        print("📂 browse_file 호출됨")  # 디버깅용
         file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)")
         if file_path:
             file_input.setText(file_path)
 
-
-
-class SubWindow(QWidget):
+class Custom_2_Window(QWidget):
     def __init__(self, num_categories=3):
         super().__init__()
         self.num_categories=num_categories
@@ -163,10 +163,12 @@ class SubWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(800, 800)
 
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setColor(QColor(0, 0, 0, 100))
-        self.setGraphicsEffect(shadow)
+        # 그림자 효과 임시 제거 
+        # 사유: 파일 탐색기에서 파일이 불러와지지 않는 오류가 발생.
+        #shadow = QGraphicsDropShadowEffect(self)
+        #shadow.setBlurRadius(30)
+        #shadow.setColor(QColor(0, 0, 0, 100))
+        #self.setGraphicsEffect(shadow)
 
         container = QWidget(self)
         container.setStyleSheet("background-color: white; border-radius: 15px;")
@@ -245,14 +247,13 @@ class SubWindow(QWidget):
         if hasattr(self, 'offset') and event.buttons() == Qt.LeftButton:
             self.move(self.pos() + event.pos() - self.offset)
 
+
 def launch_training_window(num_categories):
-    app = QApplication(sys.argv)
-    window = SubWindow(num_categories)
+    window = Custom_2_Window(num_categories)
     window.show()
-    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = SubWindow()
+    window = Custom_2_Window()
     window.show()
     sys.exit(app.exec_())
