@@ -8,6 +8,7 @@ from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from PySide2.QtCore import Qt, QSize, QPoint
 from custom_2 import TrainDatasetGroup, launch_training_window
 
+# -----------------------------
 # 공통 버튼 스타일
 BUTTON_STYLE = """
     QPushButton {
@@ -28,7 +29,7 @@ BUTTON_STYLE = """
 """
 
 # -----------------------------
-# 공통 입력 박스 (리팩토링된 버전)
+# 공통 입력 박스 메인 클래스 (리팩토링된 버전)
 class IntegerInputGroup(QGroupBox):
     def __init__(self, title, example_text, on_apply=None, notice_text=None):
         super().__init__(title)
@@ -103,7 +104,7 @@ class IntegerInputGroup(QGroupBox):
         """
 
 # -----------------------------
-# 입력 박스 서브 클래스
+# train dataset 개수 입력 서브 클래스
 class TrainingInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
         super().__init__(
@@ -116,6 +117,8 @@ class TrainingInputGroup(IntegerInputGroup):
             )
         )
 
+# -----------------------------
+# input vector 크기 입력 서브 클래스
 class InputVectorGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
         super().__init__(
@@ -126,7 +129,7 @@ class InputVectorGroup(IntegerInputGroup):
         )
 
 # -----------------------------
-# 메모리 계산 박스
+# 메모리 계산 결과 출력 클래스
 class MemorySizeWindow(QGroupBox):
     def __init__(self):
         super().__init__("4. Required memory size")
@@ -158,9 +161,9 @@ class MemorySizeWindow(QGroupBox):
             return
         memory_size = input_vector_length * training_dataset
         self.output_box.setText(f"""
-input vector length × number of training dataset ≤ memory size\n
-⇔ {input_vector_length}Kbyte × {training_dataset} ≤ memory size\n
-∴ available memory size ≥ {memory_size}Kbyte"""
+    input vector length × number of training dataset ≤ memory size\n
+    ⇔ {input_vector_length}Kbyte × {training_dataset} ≤ memory size\n
+    ∴ available memory size ≥ {memory_size}Kbyte"""
         )
 
 

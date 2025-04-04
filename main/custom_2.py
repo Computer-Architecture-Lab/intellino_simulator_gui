@@ -161,14 +161,25 @@ class Custom_2_Window(QWidget):
     def _setup_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
+
         self.setFixedSize(800, 800)
 
-        # 그림자 효과 임시 제거 
-        # 사유: 파일 탐색기에서 파일이 불러와지지 않는 오류가 발생.
-        #shadow = QGraphicsDropShadowEffect(self)
-        #shadow.setBlurRadius(30)
-        #shadow.setColor(QColor(0, 0, 0, 100))
-        #self.setGraphicsEffect(shadow)
+        container = QWidget(self)
+        container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-radius: 15px;
+            }
+        """)
+        container.setGeometry(0, 0, 800, 800)
+
+        # ✅ 그림자 효과는 container에만 적용
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 0)
+        shadow.setColor(QColor(0, 0, 0, 120))
+        container.setGraphicsEffect(shadow)
+
 
         container = QWidget(self)
         container.setStyleSheet("background-color: white; border-radius: 15px;")
