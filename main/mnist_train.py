@@ -8,6 +8,7 @@ from intellino.core.neuron_cell import NeuronCells
 
 #-----------------------------------intellino train--------------------------------#
 
+
 number_of_neuron_cells = 100
 length_of_input_vector = 256
 
@@ -16,9 +17,9 @@ neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
                            length_of_input_vector=length_of_input_vector,
                            measure="manhattan")
 
-train_mnist = datasets.MNIST('../mnist_data/', download=True, train=True)
 
-print("train_start")
+
+train_mnist = datasets.MNIST('../mnist_data/', download=True, train=True)
 
 for i, (data, label) in enumerate(train_mnist):
     numpy_image = np.array(data)
@@ -29,15 +30,15 @@ for i, (data, label) in enumerate(train_mnist):
     is_finish = neuron_cells.train(vector=flatten_image, target=label)
 
     # 학습 진행률
-    progress = int((i)/number_of_neuron_cells * 100)
-    if i%4==0:
-        print(f"progress : {progress}", flush=True)     # flush=True : 출력 내용을 바로 콘솔로 내보내게 함
-        time.sleep(0.01)
+    if __name__ == "__main__":
+        progress = int((i)/number_of_neuron_cells * 100)
+        if i%4==0:
+            print(f"progress : {progress}", flush=True)     # flush=True : 출력 내용을 바로 콘솔로 내보내게 함
+            time.sleep(0.01)
 
-    if is_finish == True:
-        print("train finish")
-        break
-
+        if is_finish == True:
+            print("train finish")
+            break
 
 
 
