@@ -191,7 +191,7 @@ class Custom_1_Window(QWidget):
         layout.setContentsMargins(20, 60, 20, 20)
         layout.setSpacing(40)
 
-        self.category_input = IntegerInputGroup("1. Number of category to train", "ex) 10", self.update_memory_display)
+        self.category_input = IntegerInputGroup("1. Number of category to train", "ex) 10", on_apply=self.update_memory_display)
         layout.addWidget(self.category_input)
 
         self.train_data_input = TrainingInputGroup(on_apply=self.update_memory_display)
@@ -209,7 +209,14 @@ class Custom_1_Window(QWidget):
     def update_memory_display(self):
         vec_len = self.input_vector_input.get_value()
         train_num = self.train_data_input.get_value()
+        category_num = self.category_input.get_value()
+
         self.memory_display.update_display(vec_len, train_num)
+
+        if vec_len > 0 and train_num > 0 and category_num > 0:
+            self.next_btn.setEnabled(True)
+        else:
+            self.next_btn.setEnabled(False)
 
     def _add_title_bar(self, parent):
         title_bar = QWidget(parent)
@@ -220,11 +227,11 @@ class Custom_1_Window(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pixmap = QPixmap("intellino_TM_transparent.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon("main/home.png"))
+        close_btn.setIcon(QIcon("home.png"))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
@@ -247,9 +254,9 @@ class Custom_1_Window(QWidget):
         title_bar.mouseMoveEvent = self.mouseMoveEvent
 
     def _create_next_button(self):
-        next_btn = QPushButton("Next")
-        next_btn.setFixedSize(100, 40)
-        next_btn.setStyleSheet("""
+        self.next_btn = QPushButton("Next")
+        self.next_btn.setFixedSize(100, 40)
+        self.next_btn.setStyleSheet("""
             QPushButton {
                 font-weight: bold;
                 font-size: 14px;
@@ -261,10 +268,12 @@ class Custom_1_Window(QWidget):
                 background-color: #dee2e6;
             }
         """)
-        next_btn.clicked.connect(self.nextFunction)
+        self.next_btn.clicked.connect(self.nextFunction)
+        self.next_btn.setEnabled(False) #초기엔 비활성화
+
         layout = QHBoxLayout()
         layout.addStretch()
-        layout.addWidget(next_btn)
+        layout.addWidget(self.next_btn)
         return layout
 
     def mousePressEvent(self, event: QMouseEvent):
