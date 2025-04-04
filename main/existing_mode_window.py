@@ -178,7 +178,7 @@ class ResultSection(QWidget):
         result_layout = QVBoxLayout()
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setText("Inference result : 7")
+        self.result_text.setText("")
         self.result_text.setStyleSheet("""
             QTextEdit {
                 font-size: 14px;
@@ -353,7 +353,7 @@ class SubWindow(QWidget):
     def read_inference_output(self):
         if self.infer_process.stdout:
             line = self.infer_process.stdout.readline()
-            # print(f"[DEBUG] read: {line.strip()}")    # 디버깅용용
+            # print(f"[DEBUG] read: {line.strip()}")    # 디버깅용
             if line:
                 self.result_section.result_text.append(line.strip())
 
@@ -401,10 +401,6 @@ class SubWindow(QWidget):
             
 
         # def speechFunction(self):
-
-    
-        
-
 
 
 if __name__ == "__main__":
