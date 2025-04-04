@@ -1,8 +1,11 @@
 import sys
+import os
+import subprocess
 from PySide2.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, \
     QGraphicsDropShadowEffect, QGroupBox, QProgressBar, QLineEdit, QFileDialog, QTextEdit, QSizePolicy
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QPoint
+from PySide2.QtCore import Qt, QSize, QTimer, QPoint
+
 
 
 # 2. Train 섹션 (최소 높이)
@@ -285,14 +288,17 @@ class SubWindow(QWidget):
         mnist_btn = QPushButton("MNIST")
         mnist_btn.setMinimumSize(QSize(90, 35))
         mnist_btn.setStyleSheet(button_style)
+        mnist_btn.clicked.connect(self.mnistFunction)   # --> MNIST 버튼 누르면 함수 호출
 
         cifar_btn = QPushButton("CIFAR-10")
         cifar_btn.setMinimumSize(QSize(110, 35))
         cifar_btn.setStyleSheet(button_style)
+        # cifar_btn.clicked.connect(self.cifarFunction)   # --> CIFAR 버튼 누르면 함수 호출
 
         speech_btn = QPushButton("Speech Commands")
         speech_btn.setMinimumSize(QSize(180, 35))
         speech_btn.setStyleSheet(button_style)
+        # speech_btn.clicked.connect(self.sppechFunction)   # --> speech 버튼 누르면 함수 호출
 
         dataset_layout.addWidget(mnist_btn)
         dataset_layout.addWidget(cifar_btn)
@@ -319,6 +325,7 @@ class SubWindow(QWidget):
         title_bar.mousePressEvent = self.mousePressEvent
         title_bar.mouseMoveEvent = self.mouseMoveEvent
 
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
             self.offset = event.pos()
@@ -326,6 +333,43 @@ class SubWindow(QWidget):
     def mouseMoveEvent(self, event: QMouseEvent):
         if self.offset is not None and event.buttons() == Qt.LeftButton:
             self.move(self.pos() + event.pos() - self.offset)
+
+    def mnistFunction(self):
+        train_path = os.path.join(os.path.dirname(__file__), "mnist_train.py")
+        self.process = subprocess.Popen([sys.executable, train_path], stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT,
+                                            universal_newlines=True,
+                                            bufsize=1)
+            
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_progress_output)
+        self.timer.start(10)
+
+    def check_progress_output(self):
+        if self.process.stdout:
+            line = self.process.stdout.readline()
+            if line:
+                if "progress :" in line:
+                    try:
+                        percent = int(line.strip().split("progress :")[1])
+                        self.train_section.update_progress(percent)   # 진행률 반영
+                    except ValueError:
+                        pass
+
+            # 프로세스가 종료되었는지 확인
+            if self.process.poll() is not None:
+                self.timer.stop()
+
+
+        
+        # def cifarFunction(self):
+            
+
+        # def speechFunction(self):
+
+    
+        
+
 
 
 if __name__ == "__main__":
