@@ -6,7 +6,7 @@ from PySide2.QtWidgets import (
 from PySide2.QtCore import QPropertyAnimation
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from PySide2.QtCore import Qt, QSize, QPoint
-from custom_2 import InputVectorWindow
+from custom_2 import TrainDatasetGroup, launch_training_window
 
 # 공통 버튼 스타일
 BUTTON_STYLE = """
@@ -160,7 +160,8 @@ class MemorySizeWindow(QGroupBox):
         self.output_box.setText(f"""
 input vector length × number of training dataset ≤ memory size\n
 ⇔ {input_vector_length}Kbyte × {training_dataset} ≤ memory size\n
-∴ available memory size ≥ {memory_size}Kbyte""")
+∴ available memory size ≥ {memory_size}Kbyte"""
+        )
 
 
 # -----------------------------
@@ -276,8 +277,7 @@ class Custom_1_Window(QWidget):
 
     def nextFunction(self):
         num = self.category_input.get_value()
-        self.custom2 = InputVectorWindow(num_categories=num)
-        self.custom2.show()
+        launch_training_window(num_categories=num)
 
         effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(effect)

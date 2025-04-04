@@ -7,8 +7,6 @@ from existing_mode_window import SubWindow   # easymode window
 from custom_1 import Custom_1_Window         # custom_1 window
 
 
-
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
