@@ -1,10 +1,5 @@
 import numpy as np
-import math
-import time
-import cv2
-import sys
-import os
-import pickle
+import math, time, cv2, sys, os, pickle
 from torchvision import datasets
 from intellino.core.neuron_cell import NeuronCells
 
