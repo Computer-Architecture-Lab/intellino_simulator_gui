@@ -103,7 +103,7 @@ def preprocess_user_image(image_path):
     normalized = padded / 255.0
 
     # 8. Flatten
-    flatten = normalized.reshape(1, -1).squeeze()
+    flatten = padded.reshape(1, -1).squeeze()
 
     return flatten
 
