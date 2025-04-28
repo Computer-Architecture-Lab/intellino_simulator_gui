@@ -103,11 +103,11 @@ def preprocess_user_image(image_path):
     # 6. 저장 (디버깅용)
     cv2.imwrite("preprocessed_user_image.png", padded)
 
-    # 7. 정규화
-    normalized = padded / 255.0
+    # # 7. 정규화
+    # normalized = padded / 255.0
 
     # 8. Flatten
-    flatten = normalized.reshape(1, -1).squeeze()
+    flatten = padded.reshape(1, -1).squeeze()
 
     return flatten
 
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         infer()           
     else:                 
         train()           
-        infer()        
+        # infer()        
 
                           
                       
