@@ -67,22 +67,34 @@ def preprocess_user_image(image_path):
     # 1. 약한 Blur
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    # 2. Threshold (Otsu 방식) - 흑백 나누기
+    # 2. Threshold (Otsu 방식)
     _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # 3. 숫자 영역만 추출 (bounding box)
+    # 픽셀 반전 (흰 배경일 경우 평균 밝기 기준)
+    if np.mean(binary) > 127:
+        binary = 255 - binary  # MNIST 스타일로 맞춤
+
+    # 3. 숫자 영역만 추출
     coords = cv2.findNonZero(binary)
     x, y, w, h = cv2.boundingRect(coords)
     cropped = binary[y:y+h, x:x+w]
 
-    # 4. 크기 조정 (20x20)
-    resized = cv2.resize(cropped, (20, 20), interpolation=cv2.INTER_AREA)
+    # 4. Aspect Ratio 유지하면서 최대한 키우기
+    target_size = 20
+    if w > h:
+        new_w = target_size
+        new_h = int(h * target_size / w)
+    else:
+        new_h = target_size
+        new_w = int(w * target_size / h)
+
+    resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
     # 5. 중앙 배치 (28x28)
     padded = np.zeros((28, 28), dtype=np.uint8)
-    x_offset = (28 - 20) // 2
-    y_offset = (28 - 20) // 2
-    padded[y_offset:y_offset+20, x_offset:x_offset+20] = resized
+    x_offset = (28 - new_w) // 2
+    y_offset = (28 - new_h) // 2
+    padded[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
 
     # 6. 저장 (디버깅용)
     cv2.imwrite("preprocessed_user_image.png", padded)
@@ -94,6 +106,22 @@ def preprocess_user_image(image_path):
     flatten = normalized.reshape(1, -1).squeeze()
 
     return flatten
+
+
+#    src = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+#    ret , binary = cv2.threshold(src,170,255,cv2.THRESH_BINARY_INV)
+#
+#    # 픽셀 반전 (흰 배경일 경우 평균 밝기 기준)
+#    if np.mean(binary) > 127:
+#        binary = 255 - binary  # MNIST 스타일로 맞춤
+#
+#    myNum1 = np.asarray(cv2.resize(binary, dsize=(resize_size, resize_size), interpolation=cv2.INTER_AREA))
+#    cv2.imwrite("preprocessed_user_image.png", myNum1)
+#    myNum2 = myNum1/255
+#
+#    flatten_image = myNum2.reshape(1, -1).squeeze()
+#
+#    return flatten_image
 
 
 
