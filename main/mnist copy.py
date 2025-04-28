@@ -38,30 +38,26 @@ def train():
     for i, (data, label) in enumerate(train_mnist):
         if label_counts[label] >= min_per_label:
             continue
-
         numpy_image = np.array(data)
         opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
         opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
         resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
-        flatten_image = resized_image.reshape(1, -1).squeeze()
-
-        neuron_cells.train(vector=flatten_image, target=label)
+        flatten_image = resized_image .reshape(1, -1).squeeze()
+        is_finish = neuron_cells.train(vector=flatten_image, target=label)
 
         label_counts[label] += 1
-        trained += 1
 
-        if i % 4 == 0:
-            progress = int(trained / number_of_neuron_cells * 100)
-            print(f"progress : {progress}%", flush=True)
+        # 학습 진행률
+        progress = int((i)/number_of_neuron_cells * 100)
+        if i%4==0:
+            print(f"progress : {progress}", flush=True)     # flush=True : 출력 내용을 바로 콘솔로 내보내게 함
             time.sleep(0.01)
 
-        # ✅ 라벨 10개 × 100개 학습되면 저장
-        if trained >= number_of_neuron_cells:
+        if is_finish == True:
             print("train finish")
-            with open("trained_neuron.pkl", "wb") as f:
+            with open("trained_neuron.pkl","wb") as f:
                 pickle.dump(neuron_cells, f)
             break
-
 
 
 #-----------------------------------intellino test---------------------------------#
@@ -95,7 +91,6 @@ def inference_debug_external(neuron_cells, vector, result_widget=None, top_n=5):
         distances.append((d, cell.target))
         label_distances[cell.target].append(d)  # 🔹 라벨별 그룹핑
     distances.sort(key=lambda x: x[0])
-
     # 👉 Top-5 뉴런 출력
     if result_widget:
         result_widget.append("[DEBUG] Distance to neurons (Top-5):")
@@ -105,7 +100,6 @@ def inference_debug_external(neuron_cells, vector, result_widget=None, top_n=5):
         print("[DEBUG] Distance to neurons (Top-5):")
         for i, (dist, label) in enumerate(distances[:top_n]):
             print(f"  Top-{i+1}: label={label}, distance={dist:.2f}")
-
     # 👉 라벨별 평균 거리 출력
     label_avg = {label: np.mean(dlist) for label, dlist in label_distances.items()}
     sorted_avg = sorted(label_avg.items(), key=lambda x: x[1])
@@ -150,7 +144,7 @@ def infer():
     correct = 0
 
     for data, label in tqdm(test_mnist):
-        if cnt ==5:
+        if cnt ==10000:
             break
         cnt +=1
         numpy_image = np.array(data)
@@ -159,12 +153,12 @@ def infer():
         resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
         flatten_image = resized_image.reshape(1, -1).squeeze()
         predict_label = neuron_cells_loaded.inference(vector=flatten_image)
-        # print(f"label : {label}, predict_label : {predict_label}", flush=True)
+        #print(f"label : {label}, predict_label : {predict_label}", flush=True)
         if predict_label==label:
             correct+=1
-        print(neuron_cells.inference_distances(flatten_image))
-        print(neuron_cells.inference_category(flatten_image))
-        print(neuron_cells.inference(flatten_image))
+        #print(neuron_cells.inference_distances(flatten_image))
+        #print(neuron_cells.inference_category(flatten_image))
+        #print(neuron_cells.inference(flatten_image))
 
     print(correct/cnt*100)
 
@@ -174,4 +168,5 @@ if __name__ == "__main__":
     else:
         train()
 
+    train()
     infer()
