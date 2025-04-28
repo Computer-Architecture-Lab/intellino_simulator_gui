@@ -3,13 +3,14 @@ import math, time, cv2, sys, os, pickle
 from torchvision import datasets
 from intellino.core.neuron_cell import NeuronCells
 from torch.utils.data import DataLoader
+from pprint import pprint
 
 
 #-----------------------------------intellino train--------------------------------#
 
 
 number_of_neuron_cells = 1000
-length_of_input_vector = 784
+length_of_input_vector = 256
 
 resize_size = int(math.sqrt(length_of_input_vector))
 neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
@@ -23,7 +24,6 @@ test_mnist = datasets.MNIST("../mnist_data/", download=True, train=False)
                             
 
 def train():
-    dataloader = DataLoader(train_mnist, shuffle=True)
     for i, (data, label) in enumerate(train_mnist):
         numpy_image = np.array(data)
         opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
@@ -113,3 +113,10 @@ if __name__ == "__main__":
         infer()
     else:
         train()
+
+    attrs = [attr for attr in dir(neuron_cells) if not attr.startswith("__")]
+    for attr in attrs:
+        value = getattr(neuron_cells, attr)
+        print(f"{attr}: {type(value)}")
+
+    pprint(neuron_cells.__dict__)
