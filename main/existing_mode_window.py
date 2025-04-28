@@ -339,7 +339,7 @@ class SubWindow(QWidget):
     def run_inference(self, file_path):
         print(f"[DEBUG] run_inference called with: {file_path}")
         test_path = os.path.join(os.path.dirname(__file__), "mnist.py")
-        self.infer_process = subprocess.Popen([sys.executable, test_path, "infer"],
+        self.infer_process = subprocess.Popen([sys.executable, test_path, "infer", file_path],
                                           stdout=subprocess.PIPE,
                                           stderr=subprocess.STDOUT,
                                           universal_newlines=True,
