@@ -114,9 +114,11 @@ if __name__ == "__main__":
     else:
         train()
 
+    '''
     attrs = [attr for attr in dir(neuron_cells) if not attr.startswith("__")]
     for attr in attrs:
         value = getattr(neuron_cells, attr)
         print(f"{attr}: {type(value)}")
 
     pprint(neuron_cells.__dict__)
+    '''
