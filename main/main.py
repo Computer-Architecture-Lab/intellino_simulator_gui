@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
             self.ui.imageLabel.setPixmap(QPixmap(img_path))
             self.ui.imageLabel.setScaledContents(True)
         else:
-            print("이미지 파일 없음:", img_path)
+            print("no image file:", img_path)
 
     # 버튼 눌렀을 때 실행할 함수
     def subFunction(self):

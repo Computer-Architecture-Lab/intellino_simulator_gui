@@ -229,11 +229,11 @@ class SubWindow(QWidget):
         title_layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap("intellino_TM_transparent.png").scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pixmap = QPixmap("main\intellino_TM_transparent.png").scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon("home.png"))
+        close_btn.setIcon(QIcon("main\home.png"))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
@@ -339,7 +339,7 @@ class SubWindow(QWidget):
     def run_inference(self, file_path):
         print(f"[DEBUG] run_inference called with: {file_path}")
         test_path = os.path.join(os.path.dirname(__file__), "mnist.py")
-        self.infer_process = subprocess.Popen([sys.executable, test_path, "infer"],
+        self.infer_process = subprocess.Popen([sys.executable, test_path, "infer", file_path],
                                           stdout=subprocess.PIPE,
                                           stderr=subprocess.STDOUT,
                                           universal_newlines=True,
