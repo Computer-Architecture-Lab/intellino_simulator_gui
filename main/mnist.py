@@ -1,6 +1,6 @@
 import numpy as np
 import math, time, cv2, sys, os, pickle
-from torchvision import datasets
+from torchvision import datasets, transforms
 from intellino.core.neuron_cell import NeuronCells
 from torch.utils.data import DataLoader
 from pprint import pprint
@@ -21,7 +21,7 @@ neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
                            length_of_input_vector=length_of_input_vector,
                            measure="manhattan")
 
-
+transform = transforms.ToTensor()
 # dataset
 train_mnist = datasets.MNIST('../mnist_data/', download=True, train=True)
 test_mnist = datasets.MNIST("../mnist_data/", download=True, train=False)
@@ -29,11 +29,14 @@ test_mnist = datasets.MNIST("../mnist_data/", download=True, train=False)
 
 def train():  
     label_counts = defaultdict(int)
+    train_num=0
 
     for i, (data, label) in enumerate(train_mnist):
         if label_counts[label] >= min_per_label:
             continue
+        train_num+=1
         numpy_image = np.array(data)
+        # numpy_image = data.squeeze().numpy().astype(np.uint8)
         opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
         opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
         resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
@@ -43,8 +46,8 @@ def train():
         label_counts[label] += 1
 
         # 학습 진행률
-        progress = int((i)/number_of_neuron_cells * 100)
-        if i%4==0:
+        progress = int((train_num/number_of_neuron_cells)*100)
+        if train_num%(number_of_neuron_cells/25)==0:
             print(f"progress : {progress}", flush=True)     # flush=True : 출력 내용을 바로 콘솔로 내보내게 함
             time.sleep(0.01)
 
@@ -56,6 +59,7 @@ def train():
 
 
 #-----------------------------------intellino test---------------------------------#
+
 
 def preprocess_user_image(image_path):
     # 0. 이미지 읽기 (컬러 -> 그레이)
