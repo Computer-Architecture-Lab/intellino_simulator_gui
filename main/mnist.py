@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 #-----------------------------------intellino train--------------------------------#
 
 
-number_of_neuron_cells = 100
+number_of_neuron_cells = 1000
 length_of_input_vector = 256
 
 resize_size = int(math.sqrt(length_of_input_vector))
@@ -30,14 +30,15 @@ test_mnist = datasets.MNIST("../mnist_data/", download=True, train=False)
 
 def train():
     dataloader = DataLoader(train_mnist, shuffle=True)
-
+    train_num = 0
     label_counts = [0 for i in range(10)]
     
     for i, (data, label) in enumerate(train_mnist):
         label_counts[label] += 1
-        if label_counts[label] >10:
+        if label_counts[label] > (number_of_neuron_cells/10):
             continue  # 이미 10개 넘었으면 스킵
 
+        train_num += 1
         numpy_image = np.array(data)
         # numpy_image = data.squeeze().numpy().astype(np.uint8)
         opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
@@ -47,8 +48,8 @@ def train():
         is_finish = neuron_cells.train(vector=flatten_image, target=label)
 
         # 학습 진행률
-        progress = int((i)/number_of_neuron_cells * 100)
-        if i%4==0:
+        progress = int((train_num/number_of_neuron_cells)*100)
+        if train_num%(number_of_neuron_cells/25)==0:
             print(f"progress : {progress}", flush=True)     # flush=True : 출력 내용을 바로 콘솔로 내보내게 함
             time.sleep(0.01)
 
