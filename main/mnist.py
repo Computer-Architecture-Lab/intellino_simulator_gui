@@ -71,8 +71,10 @@ def preprocess_user_image(image_path):
     # 1. 약한 Blur
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
 
+    cv2.imwrite("1.png", blurred)
+
     # 2. Threshold (Otsu 방식)
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_OTSU)
 
     # 픽셀 반전 (흰 배경일 경우 평균 밝기 기준)
     if np.mean(binary) > 127:
@@ -157,21 +159,37 @@ def infer():
         correct = 0
         total = 0
 
+        # 각 클래스(0~9)별로 맞춘 개수, 전체 개수 카운트
+        num_classes = 10  # MNIST는 0~9, 10개 클래스
+        class_correct = [0 for _ in range(num_classes)]
+        class_total = [0 for _ in range(num_classes)]
+        
         for i, (data, label) in tqdm(enumerate(test_mnist), total=len(test_mnist), desc="Infer Progress"):
             numpy_image = np.array(data)
             opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
             opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
             resized_image = cv2.resize(numpy_image, dsize=(resize_size, resize_size))
             flatten_image = resized_image.reshape(1, -1).squeeze()
-
+        
             predict_label = neuron_cells_loaded.inference(vector=flatten_image)
-
+        
             if predict_label == label:
                 correct += 1
+                class_correct[label] += 1  # 정답 개수 추가
+            class_total[label] += 1  # 총 시도 개수 추가
             total += 1
-
+        
         accuracy = correct / total * 100
-        print(f"\n[Test Result] Accuracy: {accuracy:.2f}% ({correct}/{total})", flush=True)
+        print(f"\n[Test Result] Total Accuracy: {accuracy:.2f}% ({correct}/{total})", flush=True)
+        
+        # 클래스별 정확도 출력
+        print("\n[Class-wise Accuracy]")
+        for i in range(num_classes):
+            if class_total[i] > 0:
+                acc = class_correct[i] / class_total[i] * 100
+                print(f"Label {i}: {acc:.2f}% ({class_correct[i]}/{class_total[i]})")
+            else:
+                print(f"Label {i}: No samples.")
                           
                       
 if __name__ == "__main__":
