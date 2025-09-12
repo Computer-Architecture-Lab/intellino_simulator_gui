@@ -4,10 +4,21 @@ from torchvision import datasets, transforms
 from intellino.core.neuron_cell import NeuronCells
 from torch.utils.data import DataLoader
 from pprint import pprint
+
+import warnings
+warnings.filterwarnings("ignore")
+
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
 from collections import defaultdict
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(SCRIPT_DIR, "trained_neuron.pkl")
+
+
+
 
 #-----------------------------------intellino train--------------------------------#
 
@@ -51,9 +62,10 @@ def train():
             print(f"progress : {progress}", flush=True)     # flush=True : 출력 내용을 바로 콘솔로 내보내게 함
             time.sleep(0.01)
 
+        # 지금 is_finish가 True가 안됨... 누가 해결좀 해줘
         if is_finish == True:
             print("train finish")
-            with open("trained_neuron.pkl","wb") as f:
+            with open(MODEL_PATH, "wb") as f:
                 pickle.dump(neuron_cells, f)
             break
 
@@ -127,11 +139,12 @@ def preprocess_user_image(image_path):
 
 
 def infer():
-    if not os.path.exists("trained_neuron.pkl"):
-        print("[ERROR] There is no learned model.Run learning first.", flush=True)
+
+    if not os.path.exists(MODEL_PATH):
+        print("[ERROR] There is no learned model. Run learning first.", flush=True)
         return
 
-    with open("trained_neuron.pkl", "rb") as f:
+    with open(MODEL_PATH, "rb") as f:
         neuron_cells_loaded = pickle.load(f)
 
     # ------------------------------
