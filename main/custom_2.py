@@ -7,6 +7,9 @@ from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QPoint
 from functools import partial  # TypeError 방지. 안정적인 파일 경로 전달
 
+# ✅ 추가: window_3(custom_3.py)에서 SubWindow를 직접 import
+from custom_3 import SubWindow as Window3
+
 
 # 공통 버튼 스타일
 BUTTON_STYLE = """
@@ -118,7 +121,7 @@ class TrainDatasetGroup(QGroupBox):
         scroll_widget.setLayout(scroll_layout)
         scroll_area.setWidget(scroll_widget)
 
-        # 💄 스크롤바 스타일 적용
+        #  스크롤바 스타일 적용
         scroll_area.setStyleSheet("""
             QScrollBar:vertical {
                 border: none;
@@ -155,7 +158,8 @@ class TrainDatasetGroup(QGroupBox):
 class Custom_2_Window(QWidget):
     def __init__(self, num_categories=3):
         super().__init__()
-        self.num_categories=num_categories
+        self.num_categories = num_categories
+        self.win3 = None  # ✅ window_3 참조 보관 (GC 방지)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -173,13 +177,12 @@ class Custom_2_Window(QWidget):
         """)
         container.setGeometry(0, 0, 800, 800)
 
-        # ✅ 그림자 효과는 container에만 적용
+        #  그림자 효과는 container에만 적용
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(30)
         shadow.setOffset(0, 0)
         shadow.setColor(QColor(0, 0, 0, 120))
         container.setGraphicsEffect(shadow)
-
 
         container = QWidget(self)
         container.setStyleSheet("background-color: white; border-radius: 15px;")
@@ -204,7 +207,7 @@ class Custom_2_Window(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
@@ -231,9 +234,9 @@ class Custom_2_Window(QWidget):
         title_bar.mouseMoveEvent = self.mouseMoveEvent
 
     def _create_next_button(self):
-        next_btn = QPushButton("Train Start")
-        next_btn.setFixedSize(100, 40)
-        next_btn.setStyleSheet("""
+        self.next_btn = QPushButton("Train Start")
+        self.next_btn.setFixedSize(100, 40)
+        self.next_btn.setStyleSheet("""
             QPushButton {
                 font-weight: bold;
                 font-size: 14px;
@@ -245,10 +248,19 @@ class Custom_2_Window(QWidget):
                 background-color: #dee2e6;
             }
         """)
+        self.next_btn.clicked.connect(self.open_window3)  # 클릭 시 window_3 열기
+
         layout = QHBoxLayout()
         layout.addStretch()
-        layout.addWidget(next_btn)
+        layout.addWidget(self.next_btn)
         return layout
+
+    # Train Start → custom_3.SubWindow 열기
+    def open_window3(self):
+        if self.win3 is None:
+            self.win3 = Window3(num_categories=self.num_categories)
+        self.win3.show()
+        self.close()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:

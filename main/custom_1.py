@@ -7,6 +7,8 @@ from PySide2.QtCore import QPropertyAnimation
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from PySide2.QtCore import Qt, QSize, QPoint
 from custom_2 import TrainDatasetGroup, launch_training_window
+#from custom_3 import launch_window
+
 
 # -----------------------------
 # 공통 버튼 스타일
@@ -28,8 +30,60 @@ BUTTON_STYLE = """
     }
 """
 
+
 # -----------------------------
-# 공통 입력 박스 메인 클래스 (리팩토링된 버전)
+# 0. TitleBar (절대좌표로 배치, 드래그 이동/닫기 버튼 포함)
+class TitleBar(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._parent = parent
+        self.setFixedHeight(50)  # 기존 높이 유지
+        self.setStyleSheet(
+            "background-color: #f1f3f5; "
+            "border-top-left-radius: 15px; border-top-right-radius: 15px;"
+        )
+        self.setAttribute(Qt.WA_StyledBackground, True)  # ← 이 줄 추가!
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 0, 15, 0)  # 기존 여백 유지
+
+        logo_label = QLabel()
+        # 슬래시(/) 사용해 경로 이스케이프 문제 방지
+        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(
+            65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        logo_label.setPixmap(pixmap)
+
+        close_btn = QPushButton()
+        close_btn.setIcon(QIcon("main/home.png"))
+        close_btn.setIconSize(QSize(24, 24))
+        close_btn.setFixedSize(34, 34)
+        close_btn.setStyleSheet("""
+            QPushButton { border: none; background-color: transparent; }
+            QPushButton:hover { background-color: #dee2e6; border-radius: 17px; }
+        """)
+        close_btn.clicked.connect(lambda: self._parent and self._parent.close())
+
+        layout.addWidget(logo_label)
+        layout.addStretch()
+        layout.addWidget(close_btn)
+
+        self._offset = None
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._offset = event.pos()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._offset is not None and event.buttons() == Qt.LeftButton and self._parent:
+            self._parent.move(self._parent.pos() + event.pos() - self._offset)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self._offset = None
+
+
+# -----------------------------
+# 공통 입력 박스 베이스
 class IntegerInputGroup(QGroupBox):
     def __init__(self, title, example_text, on_apply=None, notice_text=None):
         super().__init__(title)
@@ -53,7 +107,7 @@ class IntegerInputGroup(QGroupBox):
         self.apply_btn = QPushButton("Apply")
         self.apply_btn.setFixedSize(80, 35)
         self.apply_btn.setStyleSheet(BUTTON_STYLE)
-        self.apply_btn.clicked.connect(self.save_category_num)
+        self.apply_btn.clicked.connect(self._on_apply_clicked)
 
         h_layout.addWidget(self.input)
         h_layout.addWidget(self.apply_btn)
@@ -67,12 +121,13 @@ class IntegerInputGroup(QGroupBox):
 
         self.setLayout(main_layout)
 
-    def save_category_num(self):
+    def _on_apply_clicked(self):
+        # 값 저장 + 콜백
         try:
-            self.category_num = int(self.input.text())
+            self._value = int(self.input.text())
         except ValueError:
-            self.category_num = 0
-        print(f"applied: {self.category_num}")
+            self._value = 0
+        print(f"applied: {self._value}")
         if self.on_apply_callback:
             self.on_apply_callback()
 
@@ -103,8 +158,21 @@ class IntegerInputGroup(QGroupBox):
             }
         """
 
+
 # -----------------------------
-# train dataset 개수 입력 서브 클래스
+# 1. Category 섹션
+class CategoryInputGroup(IntegerInputGroup):
+    def __init__(self, on_apply=None):
+        super().__init__(
+            "1. Number of category to train",
+            "ex) 10",
+            on_apply=on_apply,
+            notice_text=None
+        )
+
+
+# -----------------------------
+# 2. Training dataset 섹션
 class TrainingInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
         super().__init__(
@@ -117,8 +185,9 @@ class TrainingInputGroup(IntegerInputGroup):
             )
         )
 
+
 # -----------------------------
-# input vector 크기 입력 서브 클래스
+# 3. Input vector 섹션
 class InputVectorGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
         super().__init__(
@@ -128,9 +197,10 @@ class InputVectorGroup(IntegerInputGroup):
             notice_text="※ Number of training dataset should be more or equal than number of category to train."
         )
 
+
 # -----------------------------
-# 메모리 계산 결과 출력 클래스
-class MemorySizeWindow(QGroupBox):
+# 4. 메모리 계산 결과 섹션
+class MemorySizeSection(QGroupBox):
     def __init__(self):
         super().__init__("4. Required memory size")
         self.setStyleSheet("""
@@ -143,7 +213,7 @@ class MemorySizeWindow(QGroupBox):
             }
         """)
 
-        self.layout = QVBoxLayout()
+        layout = QVBoxLayout()
         self.output_box = QTextBrowser()
         self.output_box.setStyleSheet("""
             QTextBrowser {
@@ -152,8 +222,8 @@ class MemorySizeWindow(QGroupBox):
                 background-color: #f9f9f9;
             }
         """)
-        self.layout.addWidget(self.output_box)
-        self.setLayout(self.layout)
+        layout.addWidget(self.output_box)
+        self.setLayout(layout)
 
     def update_display(self, input_vector_length: int, training_dataset: int):
         if input_vector_length <= 0 or training_dataset <= 0:
@@ -188,13 +258,18 @@ class Custom_1_Window(QWidget):
         container.setStyleSheet("background-color: white; border-radius: 15px;")
         container.setGeometry(0, 0, 800, 800)
 
-        self._add_title_bar(container)
+        # 0) 타이틀바 (절대좌표로 이전과 동일하게)
+        self.title_bar = TitleBar(self)
+        self.title_bar.setParent(container)
+        self.title_bar.setGeometry(0, 0, 800, 50)
 
+        # 본문 레이아웃(기존과 동일 마진/스페이싱)
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(20, 60, 20, 20)
+        layout.setContentsMargins(20, 60, 20, 20)  # 타이틀바(50) + 여유(10)
         layout.setSpacing(40)
 
-        self.category_input = IntegerInputGroup("1. Number of category to train", "ex) 10", on_apply=self.update_memory_display)
+        # 1~4 블록
+        self.category_input = CategoryInputGroup(on_apply=self.update_memory_display)
         layout.addWidget(self.category_input)
 
         self.train_data_input = TrainingInputGroup(on_apply=self.update_memory_display)
@@ -203,7 +278,7 @@ class Custom_1_Window(QWidget):
         self.input_vector_input = InputVectorGroup(on_apply=self.update_memory_display)
         layout.addWidget(self.input_vector_input)
 
-        self.memory_display = MemorySizeWindow()
+        self.memory_display = MemorySizeSection()
         layout.addWidget(self.memory_display)
 
         layout.addStretch()
@@ -216,45 +291,7 @@ class Custom_1_Window(QWidget):
 
         self.memory_display.update_display(vec_len, train_num)
 
-        if vec_len > 0 and train_num > 0 and category_num > 0:
-            self.next_btn.setEnabled(True)
-        else:
-            self.next_btn.setEnabled(False)
-
-    def _add_title_bar(self, parent):
-        title_bar = QWidget(parent)
-        title_bar.setGeometry(0, 0, 800, 50)
-        title_bar.setStyleSheet("background-color: #f1f3f5; border-top-left-radius: 15px; border-top-right-radius: 15px;")
-
-        layout = QHBoxLayout(title_bar)
-        layout.setContentsMargins(15, 0, 15, 0)
-
-        logo_label = QLabel()
-        pixmap = QPixmap("main\intellino_TM_transparent.png").scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        logo_label.setPixmap(pixmap)
-
-        close_btn = QPushButton()
-        close_btn.setIcon(QIcon("main\home.png"))
-        close_btn.setIconSize(QSize(24, 24))
-        close_btn.setFixedSize(34, 34)
-        close_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                background-color: transparent;
-            }
-            QPushButton:hover {
-                background-color: #dee2e6;
-                border-radius: 17px;
-            }
-        """)
-        close_btn.clicked.connect(self.close)
-
-        layout.addWidget(logo_label)
-        layout.addStretch()
-        layout.addWidget(close_btn)
-
-        title_bar.mousePressEvent = self.mousePressEvent
-        title_bar.mouseMoveEvent = self.mouseMoveEvent
+        self.next_btn.setEnabled(vec_len > 0 and train_num > 0 and category_num > 0)
 
     def _create_next_button(self):
         self.next_btn = QPushButton("Next")
@@ -272,24 +309,20 @@ class Custom_1_Window(QWidget):
             }
         """)
         self.next_btn.clicked.connect(self.nextFunction)
-        self.next_btn.setEnabled(False) #초기엔 비활성화
+        self.next_btn.setEnabled(False)  # 초기엔 비활성화
 
         layout = QHBoxLayout()
         layout.addStretch()
         layout.addWidget(self.next_btn)
         return layout
 
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            self.offset = event.pos()
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if hasattr(self, 'offset') and event.buttons() == Qt.LeftButton:
-            self.move(self.pos() + event.pos() - self.offset)
-
+    # (참고) 타이틀바 드래그는 TitleBar가 처리
     def nextFunction(self):
         num = self.category_input.get_value()
+        train_dataset = self.train_data_input.get_value()
+        input_vector_len = self.input_vector_input.get_value()
         launch_training_window(num_categories=num)
+        # custom_3에서 정보 받아갈 함수 입력
 
         effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(effect)
