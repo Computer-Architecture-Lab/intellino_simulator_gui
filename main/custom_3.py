@@ -10,6 +10,8 @@ from PySide2.QtWidgets import (
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QPoint, QTimer, Signal
 
+# ➕ 추가: custom_4의 결과 화면 윈도우
+from custom_4 import ExperimentWindow as Window4
 
 # -----------------------------
 # 공통 버튼 스타일
@@ -31,7 +33,6 @@ BUTTON_STYLE = """
     }
 """
 
-
 # -----------------------------
 # 0. TitleBar (절대좌표 + 드래그 이동)
 class TitleBar(QWidget):
@@ -43,7 +44,6 @@ class TitleBar(QWidget):
             "background-color: #f1f3f5; "
             "border-top-left-radius: 15px; border-top-right-radius: 15px;"
         )
-        # 스타일 배경 강제 적용 (일부 플랫폼에서 필요)
         self.setAttribute(Qt.WA_StyledBackground, True)
 
         layout = QHBoxLayout(self)
@@ -82,11 +82,10 @@ class TitleBar(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent):
         self._offset = None
 
-
 # -----------------------------
 # 7. Train 섹션 (진행률)
 class TrainSection(QWidget):
-    def __init__(self, title="7. Train", initial=100):
+    def __init__(self, title="6. Train", initial=100):
         super().__init__()
 
         group = QGroupBox(title)
@@ -100,7 +99,7 @@ class TrainSection(QWidget):
         group.setFixedHeight(70)
 
         bar_row = QHBoxLayout()
-        from PySide2.QtWidgets import QProgressBar  # 지역 import로 충돌 방지
+        from PySide2.QtWidgets import QProgressBar
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(initial)
         self.progress_bar.setTextVisible(False)
@@ -125,7 +124,6 @@ class TrainSection(QWidget):
         self.progress_bar.setValue(v)
         self.percent_label.setText(f"{v}%")
 
-
 # -----------------------------
 # 8. Inference 섹션
 class InferenceSection(QWidget):
@@ -134,7 +132,7 @@ class InferenceSection(QWidget):
     def __init__(self):
         super().__init__()
 
-        group = QGroupBox("8. Inference")
+        group = QGroupBox("7. Inference")
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold; border: 1px solid #b0b0b0; border-radius: 10px;
@@ -182,9 +180,7 @@ class InferenceSection(QWidget):
             self.file_input.setText(file_path)
 
     def _on_start_clicked(self):
-        # 파일을 비워두면 mnist.py가 기본 테스트셋으로 추론
         self.inference_requested.emit(self.file_input.text().strip())
-
 
 # -----------------------------
 # 9. Result 섹션
@@ -192,7 +188,7 @@ class ResultSection(QWidget):
     def __init__(self):
         super().__init__()
 
-        group = QGroupBox("9. Result")
+        group = QGroupBox("8. Result")
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold; border: 1px solid #b0b0b0; border-radius: 10px;
@@ -218,13 +214,13 @@ class ResultSection(QWidget):
         main = QVBoxLayout(self)
         main.addWidget(group)
 
-
 # -----------------------------
-# 메인 창 (SubWindow 이름 유지: window_2에서 import 하기 좋게)
+# 메인 창 (SubWindow 이름 유지)
 class SubWindow(QWidget):
     def __init__(self, num_categories: int = 0):
         super().__init__()
-        self.num_categories = num_categories  # 필요 시 이후 화면에서 활용
+        self.num_categories = num_categories
+        self.win4 = None  # ➕ 다음 화면 핸들
         self._setup_ui()
 
     def _setup_ui(self):
@@ -232,29 +228,24 @@ class SubWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(800, 800)
 
-        # 컨테이너 (둥근 흰 배경)
         container = QWidget(self)
         container.setStyleSheet("background-color: white; border-radius: 15px;")
         container.setGeometry(0, 0, 800, 800)
 
-        # 그림자
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(30)
         shadow.setColor(QColor(0, 0, 0, 100))
         self.setGraphicsEffect(shadow)
 
-        # 타이틀바 (절대좌표)
         self.title_bar = TitleBar(self)
         self.title_bar.setParent(container)
         self.title_bar.setGeometry(0, 0, 800, 50)
 
-        # 본문 레이아웃
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(20, 60, 20, 20)  # 타이틀바 높이 고려
+        layout.setContentsMargins(20, 60, 20, 20)
         layout.setSpacing(40)
 
-        # 7, 8, 9 섹션
-        self.train_section = TrainSection(initial=100)  # 스샷처럼 100%로 표시
+        self.train_section = TrainSection(initial=100)
         layout.addWidget(self.train_section)
 
         self.inference_section = InferenceSection()
@@ -263,10 +254,8 @@ class SubWindow(QWidget):
         self.result_section = ResultSection()
         layout.addWidget(self.result_section)
 
-        # 시그널 연결
         self.inference_section.inference_requested.connect(self.run_inference)
 
-        # 하단 Next 버튼
         layout.addLayout(self._create_next_button())
 
     def _create_next_button(self):
@@ -280,8 +269,8 @@ class SubWindow(QWidget):
             }
             QPushButton:hover { background-color: #dee2e6; }
         """)
-        # 필요 시 다음 화면으로 연결
-        # self.next_btn.clicked.connect(self._go_next)
+        # ➕ 다음 화면으로 이동
+        self.next_btn.clicked.connect(self._go_next)
 
         row = QHBoxLayout()
         row.addStretch()
@@ -291,7 +280,6 @@ class SubWindow(QWidget):
     # -------------------------
     # Inference 수행 (mnist.py 호출)
     def run_inference(self, file_path: str):
-        # mnist.py 경로: 현재 파일과 같은 폴더에 있다고 가정 (main/ 안)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         mnist_path = os.path.join(script_dir, "mnist.py")
 
@@ -299,11 +287,8 @@ class SubWindow(QWidget):
         if file_path:
             args.append(file_path)
 
-        # 기존 출력 초기화 및 시작 로그
         self.result_section.text.clear()
-        #self.result_section.text.append("Inference start")
 
-        # 서브프로세스 실행
         self.proc = subprocess.Popen(
             args,
             stdout=subprocess.PIPE,
@@ -312,7 +297,6 @@ class SubWindow(QWidget):
             bufsize=1
         )
 
-        # 타이머로 stdout 주기적으로 읽기
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._read_proc_output)
         self.timer.start(10)
@@ -322,17 +306,18 @@ class SubWindow(QWidget):
             line = self.proc.stdout.readline()
             if line:
                 self.result_section.text.append(line.strip())
-            if self.proc.poll() is not None:  # 종료
-                # 남은 버퍼 비우기
+            if self.proc.poll() is not None:
                 rest = self.proc.stdout.read()
                 if rest:
                     self.result_section.text.append(rest.strip())
                 self.timer.stop()
 
-    # (선택) 다음 화면 연결 자리
-    # def _go_next(self):
-    #     pass
-
+    # ➕ Next → custom_4 창으로
+    def _go_next(self):
+        if self.win4 is None:
+            self.win4 = Window4(num_categories=self.num_categories)
+        self.win4.show()
+        self.close()
 
 # 단독 실행 테스트용
 if __name__ == "__main__":
