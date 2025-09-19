@@ -7,7 +7,7 @@ from PySide2.QtCore import QPropertyAnimation
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from PySide2.QtCore import Qt, QSize, QPoint
 from custom_2 import TrainDatasetGroup, launch_training_window
-#from custom_3 import launch_window
+# from custom_3 import launch_window
 
 
 # -----------------------------
@@ -321,16 +321,24 @@ class Custom_1_Window(QWidget):
         num = self.category_input.get_value()
         train_dataset = self.train_data_input.get_value()
         input_vector_len = self.input_vector_input.get_value()
-        launch_training_window(num_categories=num)
-        # custom_3에서 정보 받아갈 함수 입력
 
+        # ★ 핵심: self를 prev_window로 넘겨서 상태를 유지한 채 복귀 가능
+        launch_training_window(num_categories=num, prev_window=self)
+
+        # ★ 페이드아웃 후 '닫기'가 아니라 '숨김' 처리 + 효과 제거
         effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(effect)
         self.anim = QPropertyAnimation(effect, b"opacity")
         self.anim.setDuration(500)
-        self.anim.setStartValue(1)
-        self.anim.setEndValue(0)
-        self.anim.finished.connect(self.close)
+        self.anim.setStartValue(1.0)
+        self.anim.setEndValue(0.0)
+
+        def _after_fade():
+            # 효과 제거 후 숨김 (Back 시 다시 보이도록)
+            self.setGraphicsEffect(None)
+            self.hide()
+
+        self.anim.finished.connect(_after_fade)
         self.anim.start()
 
 

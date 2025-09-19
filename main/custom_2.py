@@ -6,13 +6,13 @@ from PySide2.QtWidgets import (
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea
 )
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QPoint, Signal   # ★ Signal 추가
+from PySide2.QtCore import Qt, QSize, QPoint, Signal  # ★ Signal 사용
 
 # ✅ window_3(custom_3.py)에서 SubWindow를 import
 from custom_3 import SubWindow as Window3
 
 
-# 공통 버튼 스타일
+# 공통 버튼 스타일(필요 시 재사용)
 BUTTON_STYLE = """
     QPushButton {
         background-color: #ffffff;
@@ -30,6 +30,7 @@ BUTTON_STYLE = """
         color: white;
     }
 """
+
 
 class TrainDatasetGroup(QGroupBox):
     # ★ 모든 카테고리의 (파일, 라벨) 입력이 유효한지 여부를 내보내는 신호
@@ -169,10 +170,11 @@ class TrainDatasetGroup(QGroupBox):
 
 
 class Custom_2_Window(QWidget):
-    def __init__(self, num_categories=3):
+    def __init__(self, num_categories=3, prev_window=None):
         super().__init__()
         self.num_categories = num_categories
         self.win3 = None
+        self.prev_window = prev_window  # ← Back 동작에 사용할 이전 창 인스턴스
         self._setup_ui()
 
     def _setup_ui(self):
@@ -201,9 +203,9 @@ class Custom_2_Window(QWidget):
         layout.addWidget(self.dataset_group)
 
         layout.addStretch()
-        layout.addLayout(self._create_next_button())
+        layout.addLayout(self._create_nav_buttons())  # ← Back | Train Start
 
-        # ★ 초기 비활성화 + 상태 동기화 연결
+        # ★ 초기 비활성화 + 상태 동기화 연결 (Train Start)
         self.next_btn.setEnabled(False)
         self.dataset_group.completeness_changed.connect(self.next_btn.setEnabled)
         # 스타일에서 비활성화 시각화
@@ -248,10 +250,9 @@ class Custom_2_Window(QWidget):
         title_bar.mousePressEvent = self.mousePressEvent
         title_bar.mouseMoveEvent = self.mouseMoveEvent
 
-    def _create_next_button(self):
-        self.next_btn = QPushButton("Train Start")
-        self.next_btn.setFixedSize(100, 40)
-        self.next_btn.setStyleSheet("""
+    def _create_nav_buttons(self):
+        # 공통 스타일
+        btn_style = """
             QPushButton {
                 font-weight: bold;
                 font-size: 14px;
@@ -260,10 +261,22 @@ class Custom_2_Window(QWidget):
                 background-color: #fefefe;
             }
             QPushButton:hover { background-color: #dee2e6; }
-        """)
+        """
+        # Back 버튼 (왼쪽 아래)
+        self.back_btn = QPushButton("Back")
+        self.back_btn.setFixedSize(100, 40)
+        self.back_btn.setStyleSheet(btn_style)
+        self.back_btn.clicked.connect(self.go_back)
+
+        # Train Start 버튼 (오른쪽 아래)
+        self.next_btn = QPushButton("Train Start")
+        self.next_btn.setFixedSize(100, 40)
+        self.next_btn.setStyleSheet(btn_style)
         self.next_btn.clicked.connect(self.open_window3)
 
+        # 하단 배치: 왼쪽 Back, 오른쪽 Start
         layout = QHBoxLayout()
+        layout.addWidget(self.back_btn)
         layout.addStretch()
         layout.addWidget(self.next_btn)
         return layout
@@ -277,6 +290,23 @@ class Custom_2_Window(QWidget):
         self.win3.show()
         self.close()
 
+    def go_back(self):
+        """
+        이전 단계로 돌아가기.
+        - prev_window가 주어지면 그 창을 다시 보여주고 포커스/최상위로 올림.
+        - 없으면 단순히 현재 창만 닫음.
+        """
+        if self.prev_window is not None:
+            try:
+                # (custom_1에서 페이드 효과를 제거/숨김 처리했으므로 보통 불필요하지만)
+                # 안전하게 복귀 시 포커스를 보장
+                self.prev_window.show()
+                self.prev_window.raise_()
+                self.prev_window.activateWindow()
+            except Exception:
+                pass
+        self.close()
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
             self.offset = event.pos()
@@ -286,12 +316,14 @@ class Custom_2_Window(QWidget):
             self.move(self.pos() + event.pos() - self.offset)
 
 
-def launch_training_window(num_categories):
-    window = Custom_2_Window(num_categories)
+def launch_training_window(num_categories, prev_window=None):
+    window = Custom_2_Window(num_categories=num_categories, prev_window=prev_window)
     window.show()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    # 단독 실행 시 이전 창이 없으므로 Back은 현재 창만 닫습니다.
     window = Custom_2_Window()
     window.show()
     sys.exit(app.exec_())
