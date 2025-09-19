@@ -74,7 +74,6 @@ class TitleBar(QWidget):
 class ExperimentGraphSection(QWidget):
     def __init__(self):
         super().__init__()
-
         group = QGroupBox("9. Experiment graph")
         group.setStyleSheet("""
             QGroupBox {
