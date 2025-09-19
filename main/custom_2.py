@@ -37,7 +37,7 @@ class TrainDatasetGroup(QGroupBox):
     completeness_changed = Signal(bool)
 
     def __init__(self, num_categories=3):
-        super().__init__("6. Training datasets of each category")
+        super().__init__("5. Training datasets of each category")
         self.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;

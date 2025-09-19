@@ -85,7 +85,7 @@ class TitleBar(QWidget):
 # -----------------------------
 # 7. Train 섹션 (진행률)
 class TrainSection(QWidget):
-    def __init__(self, title="7. Train", initial=100):
+    def __init__(self, title="6. Train", initial=100):
         super().__init__()
 
         group = QGroupBox(title)
@@ -132,7 +132,7 @@ class InferenceSection(QWidget):
     def __init__(self):
         super().__init__()
 
-        group = QGroupBox("8. Inference")
+        group = QGroupBox("7. Inference")
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold; border: 1px solid #b0b0b0; border-radius: 10px;
@@ -188,7 +188,7 @@ class ResultSection(QWidget):
     def __init__(self):
         super().__init__()
 
-        group = QGroupBox("9. Result")
+        group = QGroupBox("8. Result")
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold; border: 1px solid #b0b0b0; border-radius: 10px;
