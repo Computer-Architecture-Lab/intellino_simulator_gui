@@ -122,6 +122,7 @@ class ExperimentWindow(QWidget):
     def __init__(self, num_categories: int = 0):
         super().__init__()
         self.num_categories = num_categories
+        self._custom1_window = None  # Reconfigure로 열리는 창 참조 저장
         self._setup_ui()
 
     def _setup_ui(self):
@@ -162,7 +163,8 @@ class ExperimentWindow(QWidget):
         self.reconf_btn = QPushButton("Reconfigure")
         self.reconf_btn.setFixedSize(120, 40)
         self.reconf_btn.setStyleSheet(BUTTON_STYLE)
-        # 필요 시 이전 화면으로 이동 로직 연결
+        # ▼ Reconfigure 클릭 시 custom_1.py로 이동
+        self.reconf_btn.clicked.connect(self._open_reconfigure)
 
         self.finish_btn = QPushButton("Finish")
         self.finish_btn.setFixedSize(120, 40)
@@ -178,6 +180,28 @@ class ExperimentWindow(QWidget):
         btn_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         layout.addWidget(btn_container, 0, Qt.AlignRight | Qt.AlignBottom)
+
+    def _open_reconfigure(self):
+        """
+        Reconfigure 버튼을 누르면 custom_1.py의 Custom_1_Window를 열고
+        현재 창(ExperimentWindow)은 숨깁니다. custom_1 창을 '닫기'하면
+        다시 이 창이 보이도록 prev_window를 전달합니다.
+        """
+        # 지연 임포트로 순환참조 회피
+        from custom_1 import Custom_1_Window, GLOBAL_FONT_QSS
+
+        # 글로벌 폰트 스타일이 정의돼 있으면 앱에 적용
+        app = QApplication.instance()
+        if app is not None and GLOBAL_FONT_QSS:
+            try:
+                app.setStyleSheet(GLOBAL_FONT_QSS)
+            except Exception:
+                pass
+
+        # 이전 창 참조를 넘겨 닫힐 때 복귀 가능
+        self._custom1_window = Custom_1_Window(prev_window=self)
+        self._custom1_window.show()
+        self.hide()
 
 # 실행 테스트용
 if __name__ == "__main__":
