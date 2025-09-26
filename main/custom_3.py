@@ -221,6 +221,8 @@ class SubWindow(QWidget):
         super().__init__()
         self.num_categories = num_categories
         self.win4 = None  # ➕ 다음 화면 핸들
+        self.proc = None
+        self.timer = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -269,6 +271,9 @@ class SubWindow(QWidget):
             }
             QPushButton:hover { background-color: #dee2e6; }
         """)
+        # ✅ 처음에는 비활성화: Start를 눌러 추론을 시작해야 활성화됨
+        self.next_btn.setEnabled(False)
+
         # ➕ 다음 화면으로 이동
         self.next_btn.clicked.connect(self._go_next)
 
@@ -289,17 +294,27 @@ class SubWindow(QWidget):
 
         self.result_section.text.clear()
 
-        self.proc = subprocess.Popen(
-            args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            bufsize=1
-        )
+        # ✅ Start 버튼을 눌러 실제로 프로세스 실행이 시작되면 Next 활성화
+        try:
+            self.proc = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+        except Exception as e:
+            # 실행 실패 시 로그 출력, Next는 활성화하지 않음
+            self.result_section.text.append(f"[Error] Failed to start inference: {e}")
+            self.proc = None
+            return
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._read_proc_output)
         self.timer.start(10)
+
+        # 프로세스 시작이 성공적으로 되었으므로 Next 버튼 활성화
+        self.next_btn.setEnabled(True)
 
     def _read_proc_output(self):
         if self.proc and self.proc.stdout:
