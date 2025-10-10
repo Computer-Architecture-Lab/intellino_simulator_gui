@@ -198,7 +198,7 @@ class TrainingInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
         super().__init__(
             "3. Number of training dataset per class",
-            "ex) 1000       Write only one unsigned integer number",
+            "ex) 10       Write only one unsigned integer number",
             on_apply=on_apply,
             notice_text=(
                 "※ Number of training dataset should be more or equal than number of category to train.\n"
