@@ -1,5 +1,9 @@
 # custom_1.py
-import sys
+import sys, os
+ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
+LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
+HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QTextBrowser,
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QButtonGroup
@@ -92,13 +96,11 @@ class TitleBar(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(
-            65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
+        pixmap = QPixmap(LOGO_PATH).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon("main/home.png"))
+        close_btn.setIcon(QIcon(HOME_ICON_PATH))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
@@ -444,8 +446,14 @@ class Custom_1_Window(QWidget):
             all_applied and vec_len > 0 and train_num > 0 and category_num > 0 and not exceed
         )
 
+    # --- custom_1.py : nextFunction 교체 ---
     def nextFunction(self):
-        launch_training_window(num_categories=self.category_input.get_value(), prev_window=self)
+        from custom_2 import launch_training_window  # (상단 import 유지해도 무방)
+        launch_training_window(
+            num_categories=self.category_input.get_value(),
+            samples_per_class=self.train_data_input.get_value(),
+            prev_window=self
+        )
 
         effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(effect)

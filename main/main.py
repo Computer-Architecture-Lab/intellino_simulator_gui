@@ -1,11 +1,12 @@
+# main.py
 import sys
 import os
+
 from PySide2.QtGui import QPixmap
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget
 from ui_mainwindow import Ui_MainWindow  # GUI main window 
 from existing_mode_window import SubWindow   # easymode window
 from custom_1 import Custom_1_Window         # custom_1 window
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -38,15 +39,9 @@ class MainWindow(QMainWindow):
         self.custom_window = Custom_1_Window()
         self.custom_window.show()
 
-
-
-
 #main
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
-
-
-

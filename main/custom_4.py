@@ -8,6 +8,10 @@ from PySide2.QtWidgets import (
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize
 
+ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
+LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
+HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+
 # 공통 버튼 스타일
 BUTTON_STYLE = """
     QPushButton {
@@ -38,26 +42,34 @@ class TitleBar(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pix = QPixmap("main/intellino_TM_transparent.png").scaled(
+        pix = QPixmap(LOGO_PATH).scaled(
             65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
         logo_label.setPixmap(pix)
 
         home_btn = QPushButton()
-        home_btn.setIcon(QIcon("main/home.png"))
+        home_btn.setIcon(QIcon(HOME_ICON_PATH))
         home_btn.setIconSize(QSize(24, 24))
         home_btn.setFixedSize(34, 34)
         home_btn.setStyleSheet("""
             QPushButton { border: none; background-color: transparent; }
             QPushButton:hover { background-color: #dee2e6; border-radius: 17px; }
         """)
-        home_btn.clicked.connect(lambda: self._parent and self._parent.close())
+        # ✔ 올바른 메서드로 연결(중첩 정의/람다 중복 연결 제거)
+        home_btn.clicked.connect(self._on_home_clicked)
 
         layout.addWidget(logo_label)
         layout.addStretch()
         layout.addWidget(home_btn)
 
         self._offset = None
+
+    def _on_home_clicked(self):
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet("")
+        if self._parent:
+            self._parent.close()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
@@ -182,24 +194,15 @@ class ExperimentWindow(QWidget):
         layout.addWidget(btn_container, 0, Qt.AlignRight | Qt.AlignBottom)
 
     def _open_reconfigure(self):
-        """
-        Reconfigure 버튼을 누르면 custom_1.py의 Custom_1_Window를 열고
-        현재 창(ExperimentWindow)은 숨깁니다. custom_1 창을 '닫기'하면
-        다시 이 창이 보이도록 prev_window를 전달합니다.
-        """
-        # 지연 임포트로 순환참조 회피
         from custom_1 import Custom_1_Window, GLOBAL_FONT_QSS
 
-        # 글로벌 폰트 스타일이 정의돼 있으면 앱에 적용
-        app = QApplication.instance()
-        if app is not None and GLOBAL_FONT_QSS:
-            try:
-                app.setStyleSheet(GLOBAL_FONT_QSS)
-            except Exception:
-                pass
-
-        # 이전 창 참조를 넘겨 닫힐 때 복귀 가능
+        # Reconfigure 창만 스타일 적용 (앱 전역 X)
         self._custom1_window = Custom_1_Window(prev_window=self)
+        try:
+            self._custom1_window.setStyleSheet(GLOBAL_FONT_QSS)
+        except Exception:
+            pass
+
         self._custom1_window.show()
         self.hide()
 
