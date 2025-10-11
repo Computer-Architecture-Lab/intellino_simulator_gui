@@ -71,6 +71,7 @@ BUTTON_STYLE = """
     QPushButton:pressed { background-color: #adb5bd; color: white; }
 """
 
+
 class TrainDatasetGroup(QGroupBox):
     completeness_changed = Signal(bool)
 
@@ -497,8 +498,10 @@ def launch_training_window(num_categories, samples_per_class, prev_window=None):
     window = Custom_2_Window(num_categories=num_categories, samples_per_class=samples_per_class, prev_window=prev_window)
     window.show()
 
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    # 단독 실행 시 이전 창이 없으므로 Back은 현재 창만 닫습니다.
     window = Custom_2_Window()
     window.show()
     sys.exit(app.exec_())
