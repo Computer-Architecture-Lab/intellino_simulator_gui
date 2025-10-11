@@ -1,5 +1,9 @@
 # custom_1.py
-import sys
+import sys, os
+ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
+LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
+HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QTextBrowser,
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QButtonGroup
@@ -92,13 +96,11 @@ class TitleBar(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(
-            65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
+        pixmap = QPixmap(LOGO_PATH).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon("main/home.png"))
+        close_btn.setIcon(QIcon(HOME_ICON_PATH))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
@@ -143,7 +145,7 @@ class IntegerInputGroup(QGroupBox):
 
         self.input = QLineEdit()
         self.input.setPlaceholderText(example_text)
-               # 0 이상 정수만 허용
+        # 0 이상 정수만 허용
         self.input.setValidator(QIntValidator(0, 999999))
         self.input.setFixedHeight(35)
         self.input.setStyleSheet("""
@@ -190,15 +192,15 @@ class IntegerInputGroup(QGroupBox):
 
 class CategoryInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
-        super().__init__("2. Number of category to train", "ex) 10", on_apply=on_apply)
+        super().__init__("2. Number of class to train", "ex) 10", on_apply=on_apply)
         self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
 
 
 class TrainingInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
         super().__init__(
-            "3. Number of training dataset",
-            "ex) 1000       Write only one unsigned integer number",
+            "3. Number of training dataset per class",
+            "ex) 10       Write only one unsigned integer number",
             on_apply=on_apply,
             notice_text=(
                 "※ Number of training dataset should be more or equal than number of category to train.\n"
@@ -294,10 +296,13 @@ class MemorySizeSection(QGroupBox):
         self.setLayout(layout)
 
     # exceed 플래그: 초과 시 경고 문구 추가 + 비교기호(≤/>) 전환
-    def update_display(self, input_vector_length: int, training_dataset: int,
+    def update_display(self, input_vector_length: int, training_dataset: int, num_classes: int,
                        selected_mem_kb=None, exceed: bool = False):
-        if input_vector_length <= 0 or training_dataset <= 0:
-            self.output_box.setText("Please enter valid input vector length and number of training dataset.")
+        if input_vector_length <= 0 or training_dataset <= 0 or num_classes <= 0:
+            self.output_box.setText(
+                "Please enter valid input vector length, number of training dataset per class, "
+                "and number of class to train."
+            )
             return
 
         # 초과 여부에 따라 비교 기호 결정
@@ -306,12 +311,11 @@ class MemorySizeSection(QGroupBox):
         # 상단 안내 문구는 기본 부등호(≤)로 유지하고,
         # 사용자가 보게 되는 대입식에는 comparator(≤ 또는 >)를 사용
         text = (
-            "input vector length × number of training dataset ≤ memory size\n\n"
-            f"⇔ {input_vector_length} × {training_dataset} {comparator} memory size\n"
-            # f"∴ available memory size ≥ {input_vector_length * training_dataset}KByte"
+            "input vector length × number of training dataset per class × number of class to train ≤ memory size\n\n"
+            f"⇔ {input_vector_length} × {training_dataset} × {num_classes} {comparator} memory size\n"
         )
         if selected_mem_kb is not None:
-            text += f"\n\nSelected(Intellino): {selected_mem_kb}KByte"
+            text += f"\nSelected(Intellino): {selected_mem_kb}KByte"
         if exceed:
             text += "\n\nThe configuration value exceeds the memory size."
 
@@ -401,7 +405,8 @@ class Custom_1_Window(QWidget):
         # 자동 값 채움(Apply는 아직 안 누른 상태로 간주)
         self.category_input.set_value(10)
         self.input_vector_input.set_value(196)
-        train_map = {2: 10, 8: 40, 16: 80}
+        # ★ 변경: 2K→1, 8K→4, 16K→8
+        train_map = {2: 1, 8: 4, 16: 8}
         self.train_data_input.set_value(train_map.get(value_kb, 0))
 
         # Apply 상태 초기화
@@ -426,14 +431,14 @@ class Custom_1_Window(QWidget):
         # 메모리 한도(바이트)
         thresholds = {2: 2048, 8: 8192, 16: 16384}
 
-        # 현재 설정값의 곱
-        product = vec_len * train_num
+        # ★ 변경: 현재 설정값의 곱 = input × train × classes
+        product = vec_len * train_num * category_num
 
         # 초과 여부(메모리 버튼이 선택된 상태에서만 판단)
         exceed = (selected_mem in thresholds) and (product > thresholds[selected_mem])
 
-        # 5번 회색창 갱신(초과 시 경고 문구 및 ‘>’ 비교기호 표기)
-        self.memory_display.update_display(vec_len, train_num, selected_mem, exceed)
+        # ★ 변경: 5번 회색창 갱신(클래스 개수 포함)
+        self.memory_display.update_display(vec_len, train_num, category_num, selected_mem, exceed)
 
         # Next 활성화: 값 유효 & 2~4번 Apply 완료 & 한도 초과 아님
         all_applied = self._applied['cat'] and self._applied['train'] and self._applied['vec']
@@ -441,8 +446,14 @@ class Custom_1_Window(QWidget):
             all_applied and vec_len > 0 and train_num > 0 and category_num > 0 and not exceed
         )
 
+    # --- custom_1.py : nextFunction 교체 ---
     def nextFunction(self):
-        launch_training_window(num_categories=self.category_input.get_value(), prev_window=self)
+        from custom_2 import launch_training_window  # (상단 import 유지해도 무방)
+        launch_training_window(
+            num_categories=self.category_input.get_value(),
+            samples_per_class=self.train_data_input.get_value(),
+            prev_window=self
+        )
 
         effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(effect)

@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Model files
+*.pkl
+
+# JetBrains (IntelliJ, PyCharm)
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# Virtual env
+.venv/
+.env/
+
+# OS files
+.DS_Store
+Thumbs.db
