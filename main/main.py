@@ -13,6 +13,8 @@ class MainWindow(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
+        self.setWindowTitle("iCore")
+
         self.ui.easyModeBtn.clicked.connect(self.subFunction)
         self.ui.hardModeBtn.clicked.connect(self.customFunction)
 
