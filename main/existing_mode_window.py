@@ -1,11 +1,16 @@
+# existing_mode_window.py
 import sys
 import os
 import subprocess
+
 from PySide2.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, \
-    QGraphicsDropShadowEffect, QGroupBox, QProgressBar, QLineEdit, QFileDialog, QTextEdit, QSizePolicy
+    QGraphicsDropShadowEffect, QGroupBox, QProgressBar, QLineEdit, QFileDialog, QTextEdit, QSizePolicy, QStyle
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QTimer, Signal, QPoint
 
+ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
+LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
+HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
 
 # 1. Dataset 섹션 (클래스 분리)
 class DatasetSection(QWidget):
@@ -235,17 +240,27 @@ class SubWindow(QWidget):
         title_layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        logo_label.setPixmap(pixmap)
+        pm = QPixmap(LOGO_PATH)
+        if not pm.isNull():
+            logo_label.setPixmap(pm.scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            # 파일이 없을 때 대비
+            logo_label.setText("intellino")
+            logo_label.setStyleSheet("font-weight:600;")
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon("main/home.png"))
+        home_icon = QIcon(HOME_ICON_PATH)
+        if home_icon.isNull():
+            # 표준 홈 아이콘으로 폴백
+            home_icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
+        close_btn.setIcon(home_icon)
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
             QPushButton { border: none; background-color: transparent; }
             QPushButton:hover { background-color: #dee2e6; border-radius: 17px; }
         """)
+
         close_btn.clicked.connect(self.close)
 
         title_layout.addWidget(logo_label)

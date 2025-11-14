@@ -1,12 +1,46 @@
-# custom_4.py
 import sys
 import os
+
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QGraphicsDropShadowEffect, QFrame, QSizePolicy
+    QGroupBox, QGraphicsDropShadowEffect, QSizePolicy
 )
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize
+
+# matplotlib 임베딩
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+
+ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
+LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
+HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+
+# ── 실험 상태 전역 ─────────────────────────────────────────
+class ExperimentState:
+    MAX_RUNS = 5
+    def __init__(self):
+        self.runs = []  # [(label:str, acc:float), ...]
+
+    def add_run(self, label: str, acc: float):
+        if label is None or acc is None:
+            return
+        if len(self.runs) < self.MAX_RUNS:
+            self.runs.append((str(label), float(acc)))
+
+    def is_full(self) -> bool:
+        return len(self.runs) >= self.MAX_RUNS
+
+    def clear(self):
+        self.runs.clear()
+
+    def get_labels_accs(self):
+        labels = [lb for lb, _ in self.runs]
+        accs   = [float(ac) for _, ac in self.runs]
+        return labels, accs
+
+EXPERIMENT_STATE = ExperimentState()
+# ───────────────────────────────────────────────────────────
 
 # 공통 버튼 스타일
 BUTTON_STYLE = """
@@ -22,7 +56,7 @@ BUTTON_STYLE = """
     QPushButton:pressed { background-color: #adb5bd; color: white; }
 """
 
-# 타이틀 바
+# ── 타이틀 바 ──
 class TitleBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,26 +72,33 @@ class TitleBar(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pix = QPixmap("main/intellino_TM_transparent.png").scaled(
+        pix = QPixmap(LOGO_PATH).scaled(
             65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
         logo_label.setPixmap(pix)
 
         home_btn = QPushButton()
-        home_btn.setIcon(QIcon("main/home.png"))
+        home_btn.setIcon(QIcon(HOME_ICON_PATH))
         home_btn.setIconSize(QSize(24, 24))
         home_btn.setFixedSize(34, 34)
         home_btn.setStyleSheet("""
             QPushButton { border: none; background-color: transparent; }
             QPushButton:hover { background-color: #dee2e6; border-radius: 17px; }
         """)
-        home_btn.clicked.connect(lambda: self._parent and self._parent.close())
+        home_btn.clicked.connect(self._on_home_clicked)
 
         layout.addWidget(logo_label)
         layout.addStretch()
         layout.addWidget(home_btn)
 
         self._offset = None
+
+    def _on_home_clicked(self):
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet("")
+        if self._parent:
+            self._parent.close()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
@@ -70,7 +111,62 @@ class TitleBar(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent):
         self._offset = None
 
-# 10. Experiment graph 섹션
+
+# ── Matplotlib 캔버스 ──
+class AccuracyCanvas(FigureCanvas):
+    """
+    - X축 슬롯: 항상 5칸 고정
+    - 막대 색상/두께: 기존 코드 유지 (cornflowerblue, 기본 0.8의 1/2 폭)
+    """
+    DEFAULT_BAR_WIDTH = 0.8
+    BAR_WIDTH_SCALE   = 1.0 / 2.0
+    BAR_COLOR         = "cornflowerblue"
+
+    def __init__(self, parent=None):
+        fig = Figure(figsize=(5.0, 4.0), tight_layout=True)
+        super().__init__(fig)
+        self.setParent(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.ax = self.figure.add_subplot(111)
+        self._init_axes()
+
+    def _init_axes(self):
+        self.ax.clear()
+        self.ax.set_ylim(0, 100)
+        self.ax.set_ylabel("Accuracy (%)")
+        self.ax.set_xlabel("Parameters")
+        self.ax.grid(True, axis='y', linestyle='--', alpha=0.3)
+
+    def update_plot(self, labels, accuracies):
+        self._init_axes()
+
+        max_runs = ExperimentState.MAX_RUNS
+        labels     = list(labels or [])
+        accuracies = [float(a) for a in (accuracies or [])]
+
+        # 5칸 고정 패딩
+        if len(labels) < max_runs:
+            pad = max_runs - len(labels)
+            labels     += [""] * pad
+            accuracies += [0.0] * pad
+
+        xs = list(range(1, max_runs + 1))
+        bar_w = self.DEFAULT_BAR_WIDTH * self.BAR_WIDTH_SCALE
+        self.ax.bar(xs, accuracies, color=self.BAR_COLOR, width=bar_w)
+
+        self.ax.set_xlim(0.5, max_runs + 0.5)
+        self.ax.set_xticks(xs)
+        self.ax.set_xticklabels(labels, rotation=30, ha='right', fontsize=9)
+
+        # 값 라벨: 0%는 생략
+        for xi, acc in zip(xs, accuracies):
+            if acc > 0:
+                self.ax.text(xi, acc + 1, f"{acc:.1f}%", ha='center', va='bottom', fontsize=9)
+
+        self.draw_idle()
+
+
+# 9. Experiment graph 섹션
 class ExperimentGraphSection(QWidget):
     def __init__(self):
         super().__init__()
@@ -81,7 +177,9 @@ class ExperimentGraphSection(QWidget):
                 font-weight: bold; font-size: 14px;
                 border: 1px solid #a9a9a9;
                 border-radius: 12px;
-                margin-top: 10px; padding: 12px;
+                margin-top: 10px;
+                /* ▶ 전체 패딩을 살짝 줄여 테두리 안으로 자연스럽게 */
+                padding: 14px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -91,19 +189,13 @@ class ExperimentGraphSection(QWidget):
         """)
 
         v = QVBoxLayout()
-        v.setContentsMargins(10, 10, 10, 10)
+        # ▶ 내부 레이아웃 아랫여백: 28 → 16
+        v.setContentsMargins(10, 10, 10, 16)
+        v.setSpacing(8)
 
-        # 내부 캔버스(빈 그래프 영역)
-        self.canvas = QFrame()
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.canvas.setMinimumHeight(450)
-        self.canvas.setStyleSheet("""
-            QFrame {
-                background-color: #f5f6f7;
-                border: 1px solid #d1d1d1;
-                border-radius: 18px;
-            }
-        """)
+        self.canvas = AccuracyCanvas()
+        # ▶ 캔버스 높이: 560 → 520 (원래보다 크되 너무 과하지 않게)
+        self.canvas.setMinimumHeight(520)
 
         shadow = QGraphicsDropShadowEffect(self.canvas)
         shadow.setBlurRadius(18)
@@ -112,17 +204,25 @@ class ExperimentGraphSection(QWidget):
         self.canvas.setGraphicsEffect(shadow)
 
         v.addWidget(self.canvas)
+        # ▶ 캔버스 하단 추가 간격: 20 → 8
+        v.addSpacing(8)
+
         group.setLayout(v)
 
         main = QVBoxLayout(self)
         main.addWidget(group)
+
+    def refresh(self):
+        labels, accs = EXPERIMENT_STATE.get_labels_accs()
+        self.canvas.update_plot(labels, accs)
+
 
 # 메인 창
 class ExperimentWindow(QWidget):
     def __init__(self, num_categories: int = 0):
         super().__init__()
         self.num_categories = num_categories
-        self._custom1_window = None  # Reconfigure로 열리는 창 참조 저장
+        self._custom1_window = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -147,63 +247,83 @@ class ExperimentWindow(QWidget):
         layout.setContentsMargins(20, 60, 20, 20)
         layout.setSpacing(20)
 
-        # 10. Experiment graph
+        # 9. Experiment graph
         self.graph_section = ExperimentGraphSection()
-        # 그래프 영역이 남는 공간을 모두 차지하도록 확장
         self.graph_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.graph_section)
 
-        # ▼ 남는 공간을 위의 그래프가 흡수하도록, 버튼 영역을 맨 아래로
+        # 아래 여백은 유지(필요 시 조정 가능)
         layout.addStretch(1)
 
-        # 하단 버튼 영역 (오른쪽 정렬, 세로 배치)
+        # 하단 버튼들
         btn_col = QVBoxLayout()
         btn_col.setSpacing(12)
 
         self.reconf_btn = QPushButton("Reconfigure")
         self.reconf_btn.setFixedSize(120, 40)
         self.reconf_btn.setStyleSheet(BUTTON_STYLE)
-        # ▼ Reconfigure 클릭 시 custom_1.py로 이동
         self.reconf_btn.clicked.connect(self._open_reconfigure)
 
         self.finish_btn = QPushButton("Finish")
         self.finish_btn.setFixedSize(120, 40)
         self.finish_btn.setStyleSheet(BUTTON_STYLE)
-        self.finish_btn.clicked.connect(self.close)
+        self.finish_btn.clicked.connect(self._on_finish_clicked)  # Finish 시 초기화
 
         btn_col.addWidget(self.reconf_btn)
         btn_col.addWidget(self.finish_btn)
 
-        # 버튼 레이아웃을 고정 크기 컨테이너에 담아 우하단 정렬
         btn_container = QWidget()
         btn_container.setLayout(btn_col)
         btn_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         layout.addWidget(btn_container, 0, Qt.AlignRight | Qt.AlignBottom)
 
+        # 초기 상태 반영
+        self._update_controls()
+        self.refresh_graph()
+
+    def _update_controls(self):
+        full = EXPERIMENT_STATE.is_full()
+        self.reconf_btn.setEnabled(not full)
+        if full:
+            self.reconf_btn.setToolTip("Maximum 5 runs reached. Please finish (Home).")
+        else:
+            self.reconf_btn.setToolTip("Configure parameters and run more experiments.")
+
+    def refresh_graph(self):
+        self.graph_section.refresh()
+
+    def showEvent(self, e):
+        self._update_controls()
+        self.refresh_graph()
+        super().showEvent(e)
+
     def _open_reconfigure(self):
-        """
-        Reconfigure 버튼을 누르면 custom_1.py의 Custom_1_Window를 열고
-        현재 창(ExperimentWindow)은 숨깁니다. custom_1 창을 '닫기'하면
-        다시 이 창이 보이도록 prev_window를 전달합니다.
-        """
-        # 지연 임포트로 순환참조 회피
+        # 5회 도달 시 재설정 금지, 홈으로만
+        if EXPERIMENT_STATE.is_full():
+            self.close()
+            return
+
         from custom_1 import Custom_1_Window, GLOBAL_FONT_QSS
-
-        # 글로벌 폰트 스타일이 정의돼 있으면 앱에 적용
-        app = QApplication.instance()
-        if app is not None and GLOBAL_FONT_QSS:
-            try:
-                app.setStyleSheet(GLOBAL_FONT_QSS)
-            except Exception:
-                pass
-
-        # 이전 창 참조를 넘겨 닫힐 때 복귀 가능
         self._custom1_window = Custom_1_Window(prev_window=self)
+        try:
+            self._custom1_window.setStyleSheet(GLOBAL_FONT_QSS)
+        except Exception:
+            pass
+
         self._custom1_window.show()
         self.hide()
 
-# 실행 테스트용
+    def _on_finish_clicked(self):
+        """
+        Finish 누르면 그래프 초기화 → 전역 상태 비우고 창 닫기
+        """
+        try:
+            EXPERIMENT_STATE.clear()
+        finally:
+            self.close()
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     w = ExperimentWindow()

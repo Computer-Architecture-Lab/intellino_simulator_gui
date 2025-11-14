@@ -1,5 +1,8 @@
-# custom_1.py
-import sys
+import sys, os
+ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
+LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
+HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QTextBrowser,
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QButtonGroup
@@ -92,13 +95,11 @@ class TitleBar(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap("main/intellino_TM_transparent.png").scaled(
-            65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
+        pixmap = QPixmap(LOGO_PATH).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon("main/home.png"))
+        close_btn.setIcon(QIcon(HOME_ICON_PATH))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
@@ -287,13 +288,11 @@ class MemorySizeSection(QGroupBox):
                 font-size: 13px;
             }
         """)
-        # ★ 처음부터 두 번째 이미지 크기(큰 테두리)로 고정
         self.output_box.setFixedHeight(SECOND_STYLE_FIXED_HEIGHT)
 
         layout.addWidget(self.output_box)
         self.setLayout(layout)
 
-    # exceed 플래그: 초과 시 경고 문구 추가 + 비교기호(≤/>) 전환
     def update_display(self, input_vector_length: int, training_dataset: int, num_classes: int,
                        selected_mem_kb=None, exceed: bool = False):
         if input_vector_length <= 0 or training_dataset <= 0 or num_classes <= 0:
@@ -303,11 +302,8 @@ class MemorySizeSection(QGroupBox):
             )
             return
 
-        # 초과 여부에 따라 비교 기호 결정
         comparator = ">" if exceed else "≤"
 
-        # 상단 안내 문구는 기본 부등호(≤)로 유지하고,
-        # 사용자가 보게 되는 대입식에는 comparator(≤ 또는 >)를 사용
         text = (
             "input vector length × number of training dataset per class × number of class to train ≤ memory size\n\n"
             f"⇔ {input_vector_length} × {training_dataset} × {num_classes} {comparator} memory size\n"
@@ -323,10 +319,9 @@ class MemorySizeSection(QGroupBox):
 # -----------------------------
 # 메인 윈도우 — 스크롤 없이 ‘한 화면’에 맞춤
 class Custom_1_Window(QWidget):
-    def __init__(self, prev_window=None):  # ◀ prev_window 추가
+    def __init__(self, prev_window=None):
         super().__init__()
-        self._prev_window = prev_window    # 닫힐 때 복귀할 이전 창
-        # Next 활성화: 2~4번 각 입력에 대해 Apply 여부
+        self._prev_window = prev_window
         self._applied = {'cat': False, 'train': False, 'vec': False}
         self._setup_ui()
 
@@ -344,17 +339,14 @@ class Custom_1_Window(QWidget):
         container.setStyleSheet("background-color: white; border-radius: 15px;")
         container.setGeometry(0, 0, 800, 800)
 
-        # 0) 타이틀바
         self.title_bar = TitleBar(self)
         self.title_bar.setParent(container)
         self.title_bar.setGeometry(0, 0, 800, self.title_bar.height())
 
-        # 컨텐츠 레이아웃(스크롤 없이)
         self.main_layout = QVBoxLayout(container)
         self.main_layout.setContentsMargins(20, self.title_bar.height() + 8, 20, 12)
         self.main_layout.setSpacing(16)
 
-        # 1~5 블록
         self.intellino_mem_group = IntellinoMemorySizeGroup(on_select=self.on_memory_size_selected)
         self.main_layout.addWidget(self.intellino_mem_group)
 
@@ -369,8 +361,6 @@ class Custom_1_Window(QWidget):
 
         self.memory_display = MemorySizeSection()
         self.main_layout.addWidget(self.memory_display)
-
-        # Next 바(항상 화면에 보이도록 고정)
         self.main_layout.addWidget(self._create_next_bar())
 
     def _create_next_bar(self):
@@ -398,24 +388,15 @@ class Custom_1_Window(QWidget):
         self.next_bar = bar
         return bar
 
-    # 메모리 버튼 클릭: 자동 값 채움 + Apply 상태 초기화 + 텍스트/경고 갱신
     def on_memory_size_selected(self, value_kb: int):
-        # 자동 값 채움(Apply는 아직 안 누른 상태로 간주)
         self.category_input.set_value(10)
         self.input_vector_input.set_value(196)
-        # ★ 변경: 2K→1, 8K→4, 16K→8
         train_map = {2: 1, 8: 4, 16: 8}
         self.train_data_input.set_value(train_map.get(value_kb, 0))
 
-        # Apply 상태 초기화
         self._applied = {'cat': False, 'train': False, 'vec': False}
-
-        # 텍스트 갱신(Selected(Intellino) 포함) + 초과 검사 반영
         self.update_memory_display()
 
-        # 높이는 이미 고정되어 별도 재계산 없음
-
-    # 각 입력 박스의 Apply 버튼을 눌렀을 때 호출
     def on_input_applied(self, key: str):
         self._applied[key] = True
         self.update_memory_display()
@@ -425,27 +406,26 @@ class Custom_1_Window(QWidget):
         train_num = self.train_data_input.get_value()
         category_num = self.category_input.get_value()
         selected_mem = self.intellino_mem_group.get_selected_size_kbyte()
-
-        # 메모리 한도(바이트)
         thresholds = {2: 2048, 8: 8192, 16: 16384}
-
-        # ★ 변경: 현재 설정값의 곱 = input × train × classes
         product = vec_len * train_num * category_num
-
-        # 초과 여부(메모리 버튼이 선택된 상태에서만 판단)
         exceed = (selected_mem in thresholds) and (product > thresholds[selected_mem])
 
-        # ★ 변경: 5번 회색창 갱신(클래스 개수 포함)
         self.memory_display.update_display(vec_len, train_num, category_num, selected_mem, exceed)
 
-        # Next 활성화: 값 유효 & 2~4번 Apply 완료 & 한도 초과 아님
         all_applied = self._applied['cat'] and self._applied['train'] and self._applied['vec']
         self.next_btn.setEnabled(
             all_applied and vec_len > 0 and train_num > 0 and category_num > 0 and not exceed
         )
 
     def nextFunction(self):
-        launch_training_window(num_categories=self.category_input.get_value(), prev_window=self)
+        # custom_2.launch_training_window(…)에 파라미터 전달(그래프 X축 라벨용)
+        launch_training_window(
+            num_categories=self.category_input.get_value(),
+            samples_per_class=self.train_data_input.get_value(),
+            input_vector_length=self.input_vector_input.get_value(),
+            selected_mem_kb=self.intellino_mem_group.get_selected_size_kbyte(),
+            prev_window=self
+        )
 
         effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(effect)
@@ -461,7 +441,6 @@ class Custom_1_Window(QWidget):
         self.anim.finished.connect(_after_fade)
         self.anim.start()
 
-    # ◀ 창을 '닫을' 때(TitleBar의 home 버튼) 이전 창이 다시 보이도록 처리
     def closeEvent(self, event):
         try:
             if self._prev_window is not None:
