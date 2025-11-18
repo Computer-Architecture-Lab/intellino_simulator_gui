@@ -1,25 +1,111 @@
-# custom_3.py — clean log with guaranteed line breaks + inference below Output folder
+# custom_3.py — train/test split with accuracy + native file dialog
+# 변경: 실험 상태(EXPERIMENT_STATE)에 [파라미터 라벨, 정확도] 기록
+
 import sys, os, shutil, datetime, numpy as np, traceback, pickle, cv2
 from PIL import Image
 
-ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH   = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
-HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+# 추론 경로 제어(기본 False: 어느 경로든 허용, 단 학습 파일 차단)
+INFER_ONLY_FROM_TEST = False
+
+# ──────────────────────────────────────────────
+# exe/개발 환경 공통 리소스 경로 헬퍼
+def resource_path(name: str) -> str:
+    """
+    PyInstaller(onefile) 실행 시 임시 폴더(sys._MEIPASS)와
+    개발 환경(__file__ 기준)을 모두 커버.
+    빌드 때 --add-data "...;main" 구조를 우선 탐색한다.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
+
+    # 1) onefile 실행 시: PyInstaller가 압축을 풀어 둔 임시 폴더
+    if hasattr(sys, "_MEIPASS"):
+        base = sys._MEIPASS
+        candidates += [
+            os.path.join(base, name),              # ;.
+            os.path.join(base, "main", name),      # ;main  ← 우리가 쓰는 구조
+        ]
+
+    # 2) 개발 환경: 소스 파일 기준
+    candidates += [
+        os.path.join(here, name),
+        os.path.join(here, "main", name),
+    ]
+
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    # 마지막 안전장치
+    return candidates[0] if candidates else name
+# ──────────────────────────────────────────────
+
+LOGO_PATH      = resource_path("intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("home.png")
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QGraphicsDropShadowEffect, QSizePolicy, QGraphicsOpacityEffect,
-    QLineEdit, QFileDialog, QProgressBar, QTextBrowser
+    QLineEdit, QFileDialog, QProgressBar, QTextBrowser, QMessageBox, QStyle
 )
 from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor, QTextCursor
 from PySide2.QtCore import Qt, QSize, QTimer, QPropertyAnimation, QEasingCurve
 
 from path_utils import get_dirs
+# ▶ 실험 상태 전역 객체(커스텀4에서 정의)
+from custom_4 import EXPERIMENT_STATE
 
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
-# 프로젝트 상대 경로 확보
+# 원래 경로 계산
 CUSTOM_IMAGE_ROOT, NUMBER_IMAGE_DIR, DEFAULT_OUTPUT_ROOT = get_dirs(__file__)
+
+# exe에서 경로가 없을 때(또는 구조가 다른 경우) 보정 시도
+try:
+    main_dir = os.path.dirname(LOGO_PATH)  # 보통 '_MEIPASS/main'
+    if not os.path.isdir(CUSTOM_IMAGE_ROOT):
+        cand = os.path.join(main_dir, "custom_image")
+        if os.path.isdir(cand):
+            CUSTOM_IMAGE_ROOT = cand
+    if not os.path.isdir(NUMBER_IMAGE_DIR):
+        cand = os.path.join(main_dir, "custom_image", "number_image")
+        if os.path.isdir(cand):
+            NUMBER_IMAGE_DIR = cand
+except Exception:
+    pass
+
+def _is_writable_dir(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        test_file = os.path.join(path, ".write_test.tmp")
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return True
+    except Exception:
+        return False
+
+def _resolve_output_root(preferred: str) -> str:
+    """
+    저장 루트가 패키지 내부(읽기 전용)일 수 있으니,
+    쓰기 가능한 사용자 폴더로 자동 폴백.
+    우선순위: preferred -> %LOCALAPPDATA%/iCore -> 사용자 홈/iCore_runs
+    """
+    candidates = []
+    if preferred:
+        candidates.append(preferred)
+    localapp = os.environ.get("LOCALAPPDATA")
+    if localapp:
+        candidates.append(os.path.join(localapp, "iCore"))
+    candidates.append(os.path.join(os.path.expanduser("~"), "iCore_runs"))
+
+    for c in candidates:
+        if _is_writable_dir(c):
+            return c
+    # 마지막 최후의 보루: 현재 작업 디렉터리
+    fallback = os.path.join(os.getcwd(), "iCore_runs")
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
+
 MODEL_BASENAME = "custom_model.pkl"
 
 BUTTON_STYLE = """
@@ -41,15 +127,21 @@ def load_images_from_dir(dir_path: str):
         try:
             img = Image.open(p).convert("L").resize((28,28))
             arr = np.asarray(img, dtype=np.float32) / 255.0
-            X.append(arr.flatten()); keep.append(p)
+            X.append(arr.flatten()); keep.append(os.path.abspath(p))
         except Exception:
             pass
     if not X:
         return np.empty((0,784), dtype=np.float32), []
     return np.stack(X, axis=0), keep
 
+def vectorize_like_training(path: str):
+    try:
+        img = Image.open(path).convert("L").resize((28,28))
+        return (np.asarray(img, dtype=np.float32) / 255.0).reshape(-1)
+    except Exception:
+        return None
+
 def preprocess_user_image(image_path: str) -> np.ndarray:
-    """외부 이미지 -> 28x28(0~1) float 벡터 (중심 정렬)"""
     image = cv2.imread(image_path)
     if image is None:
         raise ValueError(f"Unable to open image: {image_path}")
@@ -87,8 +179,8 @@ def preprocess_user_image(image_path: str) -> np.ndarray:
 # 간단 최근접-이웃 모델(L1)
 class SimpleNearestModel:
     def __init__(self):
-        self.vectors = None  # (N,784) float32
-        self.labels  = []    # 길이 N, 각 항목은 str 라벨
+        self.vectors = None
+        self.labels  = []
 
     def fit_from_root(self, root_dir: str):
         if not os.path.isdir(root_dir):
@@ -97,9 +189,10 @@ class SimpleNearestModel:
         subdirs = [d for d in sorted(os.listdir(root_dir))
                    if os.path.isdir(os.path.join(root_dir, d))]
         for d in subdirs:
-            X, keep = load_images_from_dir(os.path.join(root_dir, d))
-            if X.size == 0: continue
-            vecs.append(X); labs += [d]*len(keep)
+            X, _ = load_images_from_dir(os.path.join(root_dir, d))
+            if X.size == 0:
+                continue
+            vecs.append(X); labs += [d]*X.shape[0]
         if not vecs:
             raise RuntimeError("No images found for training.")
         self.vectors = np.concatenate(vecs, axis=0).astype(np.float32)
@@ -108,7 +201,7 @@ class SimpleNearestModel:
     def predict(self, vector: np.ndarray, top_k: int = 3):
         if self.vectors is None or not self.labels:
             raise RuntimeError("Model not trained.")
-        dists = np.abs(self.vectors - vector[None,:]).sum(axis=1)  # L1
+        dists = np.abs(self.vectors - vector[None,:]).sum(axis=1)
         idx = np.argsort(dists)[:max(1, top_k)]
         return [self.labels[i] for i in idx], [float(dists[i]) for i in idx]
 
@@ -144,7 +237,11 @@ class TitleBar(QWidget):
             logo.setPixmap(pm.scaled(65,65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
         home = QPushButton()
-        home.setIcon(QIcon(HOME_ICON_PATH)); home.setIconSize(QSize(24,24))
+        icon = QIcon(HOME_ICON_PATH)
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
+        home.setIcon(icon)
+        home.setIconSize(QSize(24,24))
         home.setFixedSize(34,34)
         home.setStyleSheet("QPushButton{border:none;background:transparent;} "
                            "QPushButton:hover{background:#dee2e6; border-radius:17px;}")
@@ -185,10 +282,6 @@ class ProgressSection(QWidget):
         v = max(0, min(100, int(v))); self.bar.setValue(v); self.perc.setText(f"{v}%")
 
 class ResultView(QTextBrowser):
-    """
-    QTextBrowser + 전용 CSS + <p class="blk">…</p> + 강제 개행으로
-    어떤 환경에서도 줄바꿈이 확실히 보이도록 함.
-    """
     def __init__(self):
         super().__init__()
         self.setOpenExternalLinks(False)
@@ -199,7 +292,7 @@ class ResultView(QTextBrowser):
         self.document().setDefaultStyleSheet("""
             .blk { margin:6px 0; }
             .dim { color:#495057; }
-            .ok  { color:#2b8a3e; font-weight:700; }
+            .ok  { color:#2b8a3e; }
             .info{ color:#1c7ed6; }
             .err { color:#c92a2a; }
             .hr  { height:1px; background:#e9ecef; margin:10px 0; }
@@ -211,10 +304,9 @@ class ResultView(QTextBrowser):
         """)
 
     def add_block(self, html: str):
-        # 항상 <p>로 싸고, Qt의 append("")로 빈 문단을 추가해 줄바꿈을 강제
         self.moveCursor(QTextCursor.End)
         self.insertHtml(f"<p class='blk'>{html}</p>")
-        self.append("")  # 빈 문단(새 줄) — 환경과 상관없이 줄바꿈 보장
+        self.append("")
         self.ensureCursorVisible()
 
     def add_hr(self):
@@ -223,12 +315,15 @@ class ResultView(QTextBrowser):
 class InferenceSection(QWidget):
     def __init__(self):
         super().__init__()
-        g = QGroupBox("8. Inference"); g.setStyleSheet(
+        title = "8. Inference" if not INFER_ONLY_FROM_TEST else "8. Inference (use datasets/test)"
+        g = QGroupBox(title); g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
             "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
         )
         h = QHBoxLayout()
-        self.file_input = QLineEdit(); self.file_input.setPlaceholderText("Put in the file to infer")
+        placeholder = "Select image (default: datasets/test)" if not INFER_ONLY_FROM_TEST \
+                      else "Select test image (default: datasets/test)"
+        self.file_input = QLineEdit(); self.file_input.setPlaceholderText(placeholder)
         self.file_input.setFixedHeight(35)
         self.file_input.setStyleSheet("QLineEdit{border:1px solid #ccc;border-radius:8px;padding-left:10px;font-size:13px;}")
         self.browse_btn = QPushButton("..."); self.browse_btn.setFixedSize(35,35)
@@ -241,16 +336,28 @@ class InferenceSection(QWidget):
 # ---------------------------
 # 메인 창
 class SubWindow(QWidget):
-    def __init__(self, selection, samples_per_class: int = 1, prev_window=None, output_root=DEFAULT_OUTPUT_ROOT):
+    def __init__(self, selection, samples_per_class: int = 1, prev_window=None, output_root=DEFAULT_OUTPUT_ROOT, exp_params=None):
         super().__init__()
         self.selection = selection
         self.samples_per_class = max(1, int(samples_per_class))
-        self.output_root = output_root
+        # 출력 루트는 반드시 쓰기 가능한 곳으로 해석
+        self.output_root = _resolve_output_root(output_root)
         self.prev_window = prev_window
+
+        self.exp_params = exp_params or {}
 
         self.num_categories = len(self.selection)
         self.model = SimpleNearestModel()
+
         self._last_save_root = ""
+        self._datasets_root  = ""
+        self._train_dir      = ""
+        self._test_dir       = ""
+
+        self._train_originals = set()
+        self._train_copies    = set()
+        self._test_items      = []
+        self._last_accuracy   = None
 
         self._setup_ui()
         QTimer.singleShot(150, self._run_kmeans_and_train)
@@ -275,7 +382,8 @@ class SubWindow(QWidget):
             "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
         )
         row = QHBoxLayout()
-        self.out_label = QLabel(self.output_root); self.out_label.setStyleSheet("font-size:13px;")
+        self.out_label = QLabel("")
+        self.out_label.setStyleSheet("font-size:13px;")
         self.open_btn = QPushButton("Open folder"); self.open_btn.setFixedSize(110,32); self.open_btn.setStyleSheet(BUTTON_STYLE)
         self.open_btn.clicked.connect(self._open_output_folder)
         row.addWidget(self.out_label); row.addStretch(); row.addWidget(self.open_btn); out_g.setLayout(row)
@@ -298,19 +406,52 @@ class SubWindow(QWidget):
         self.next_btn.clicked.connect(self._go_next); self.next_btn.setEnabled(False)
         btn_row.addStretch(); btn_row.addWidget(self.next_btn); lay.addLayout(btn_row)
 
-    # ---------- Log helpers ----------
-    def _ok(self, text:str):   self.result.add_block(f"✅ <span class='ok'>{text}</span>")
-    def _info(self, text:str): self.result.add_block(f"ℹ️ <span class='info'>{text}</span>")
+    def _ok(self, text:str):   self.result.add_block(f"<span class='ok'>{text}</span>")
+    def _info(self, text:str): self.result.add_block(f"<span class='info'>{text}</span>")
     def _hint(self, text:str): self.result.add_block(f"<span class='dim'>{text}</span>")
-    def _err(self, text:str):  self.result.add_block(f"❌ <span class='err'>{text}</span>")
+    def _err(self, text:str):  self.result.add_block(f"<span class='err'>{text}</span>")
 
-    # ---------- K-means -> Train ----------
+    def _norm(self, p: str) -> str:
+        return os.path.normcase(os.path.abspath(p))
+
+    def _is_training_file(self, p: str) -> bool:
+        npth = self._norm(p)
+        return (npth in self._train_originals) or (npth in self._train_copies)
+
+    def _make_param_label(self) -> str:
+        c = self.exp_params.get("num_classes", self.num_categories)
+        t = self.exp_params.get("samples_per_class", self.samples_per_class)
+        v = self.exp_params.get("input_vec_len", None)
+        m = self.exp_params.get("memory_kb", None)
+        parts = []
+        if v is not None: parts.append(f"V{v}")
+        parts.append(f"C{c}")
+        parts.append(f"T{t}")
+        if m is not None: parts.append(f"M{m}K")
+        return " / ".join(map(str, parts))
+
     def _run_kmeans_and_train(self):
+        # 저장 루트(쓰기 가능) 확보
+        output_base = _resolve_output_root(self.output_root)
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_root = os.path.join(self.output_root, ts)
+        save_root = os.path.join(output_base, ts)
         os.makedirs(save_root, exist_ok=True)
-        self.out_label.setText(save_root)
         self._last_save_root = save_root
+
+        datasets_root = os.path.join(save_root, "datasets")
+        train_root    = os.path.join(datasets_root, "train")
+        test_root     = os.path.join(datasets_root, "test")
+        os.makedirs(train_root, exist_ok=True)
+        os.makedirs(test_root, exist_ok=True)
+        self._datasets_root = datasets_root
+        self._train_dir     = train_root
+        self._test_dir      = test_root
+
+        self.out_label.setText(self._datasets_root)
+
+        self._train_originals.clear()
+        self._train_copies.clear()
+        self._test_items.clear()
 
         total = max(1, len(self.selection))
         for i, item in enumerate(self.selection, start=1):
@@ -320,53 +461,132 @@ class SubWindow(QWidget):
                 self.progress.update(int(i/total*100)); continue
 
             k = min(self.samples_per_class, len(srcs))
-            chosen_idx = list(range(k))  # 간단 샘플 선택: 앞에서 k개
+            chosen_idx  = list(range(k))
+            chosen_set  = set(chosen_idx)
 
-            dst_dir = os.path.join(save_root, label); os.makedirs(dst_dir, exist_ok=True)
+            dst_train_label = os.path.join(train_root, label)
+            os.makedirs(dst_train_label, exist_ok=True)
             for r, idx in enumerate(chosen_idx, start=1):
-                src = srcs[idx]; base = os.path.basename(src)
-                dst = os.path.join(dst_dir, f"{label}_sel{r:02d}_{base}")
-                try: shutil.copy2(src, dst)
-                except Exception: pass
+                src  = srcs[idx]; base = os.path.basename(src)
+                dst  = os.path.join(dst_train_label, f"{label}_sel{r:02d}_{base}")
+                try:
+                    shutil.copy2(src, dst)
+                    self._train_originals.add(self._norm(src))
+                    self._train_copies.add(self._norm(dst))
+                except Exception:
+                    pass
+
+            dst_test_label = os.path.join(test_root, label)
+            os.makedirs(dst_test_label, exist_ok=True)
+            for idx, src in enumerate(srcs):
+                if idx in chosen_set:
+                    continue
+                base = os.path.basename(src)
+                test_dst = os.path.join(dst_test_label, base)
+                try:
+                    shutil.copy2(src, test_dst)
+                    self._test_items.append((test_dst, label))
+                except Exception:
+                    pass
+
             self.progress.update(int(i/total*100))
 
         self.progress.update(100)
 
-        # 정돈된 메시지 (각 문장별로 독립 블록이라 줄바꿈 확실)
         self.result.clear()
-        self._ok("K‑means selection completed.")
-        self._info("Selected files have been saved to the output folder.")
+        self._ok("K-means selection completed.")
+        self._info("Training dataset prepared at <code>datasets/train/</code>.")
+        if self._test_items:
+            self._info("Test dataset prepared at <code>datasets/test/</code>.")
+        else:
+            self._hint("No test images were available; accuracy cannot be computed.")
         self.result.add_hr()
 
-        # 즉시 훈련
         try:
-            self._info("Training on selected dataset…")
-            self.model.fit_from_root(save_root)
+            self._info("Training on datasets/train …")
+            self.model.fit_from_root(self._train_dir)
             self.model.save(os.path.join(save_root, MODEL_BASENAME))
             self._ok("Training completed.")
-            self._hint("You can now run inference below (section 8).")
+        except Exception as e:
+            self._err(f"Training failed: {e}")
+            self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+            return
+
+        try:
+            if self._test_items:
+                correct, total = 0, 0
+                for p, true_lab in self._test_items:
+                    vec = vectorize_like_training(p)
+                    if vec is None:
+                        continue
+                    pred_lab = self.model.predict(vec, top_k=1)[0][0]
+                    total += 1
+                    if pred_lab == true_lab:
+                        correct += 1
+                if total > 0:
+                    acc = 100.0 * correct / total
+                    self._last_accuracy = float(acc)
+                    EXPERIMENT_STATE.add_run(self._make_param_label(), float(acc))
+
+                    self.result.add_block("<b>Test evaluation</b>")
+                    self.result.add_block(
+                        f"Accuracy: <b>{acc:.2f}%</b> "
+                        f"(<code>{correct}</code>/<code>{total}</code>) on <code>datasets/test/</code>"
+                    )
+                else:
+                    self._hint("Test dataset exists but no readable images; accuracy cannot be computed.")
+            self.result.add_hr()
+            if INFER_ONLY_FROM_TEST:
+                self._hint("You can now run inference below (section 8). Only <code>datasets/test</code> files are allowed.")
+            else:
+                self._hint("You can now run inference below (section 8). You may choose images from anywhere; training files are blocked.")
             self.result.add_hr()
             self.next_btn.setEnabled(True)
         except Exception as e:
-            self._err(f"Training failed: {e}")
+            self._err(f"Evaluation failed: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
 
     # ---------- Inference ----------
     def _browse_infer_file(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Select image", "", "Images (*.png *.jpg *.jpeg *.bmp);;All Files (*)")
-        if p: self.infer.file_input.setText(p)
+        start_dir = self._test_dir if (self._test_dir and os.path.isdir(self._test_dir)) else self._datasets_root
+        title = "Select test image (only from datasets/test)" if INFER_ONLY_FROM_TEST else "Select image"
+        while True:
+            file_path, _ = QFileDialog.getOpenFileName(self, title, start_dir, "Images (*.png *.jpg *.jpeg *.bmp)")
+            if not file_path:
+                return
+            rp = os.path.realpath(file_path)
+            is_training = self._is_training_file(rp)
+            if INFER_ONLY_FROM_TEST:
+                test_root = os.path.realpath(self._test_dir) if self._test_dir else ""
+                in_test_root = bool(test_root and os.path.commonpath([rp, test_root]) == test_root)
+                if in_test_root and not is_training:
+                    self.infer.file_input.setText(file_path); return
+                if not in_test_root:
+                    QMessageBox.warning(self, "Not allowed", "허용되지 않은 경로입니다.\n추론 이미지는 datasets/test 폴더에서 선택해 주세요.")
+                elif is_training:
+                    QMessageBox.warning(self, "Not allowed", "이 파일은 학습에 사용되었습니다. 다른 파일을 선택해 주세요.")
+            else:
+                if not is_training:
+                    self.infer.file_input.setText(file_path); return
+                QMessageBox.warning(self, "Not allowed", "이 파일은 학습에 사용되었습니다. 다른 파일을 선택해 주세요.")
 
     def _start_inference(self):
         image_path = self.infer.file_input.text().strip()
         if not image_path:
             self._hint("Please choose an image file first."); return
 
+        if self._is_training_file(image_path):
+            QMessageBox.warning(self,"Not allowed","This file was used for training. Please choose a different file.")
+            return
+
         if self.model.vectors is None or not self.model.labels:
             model_path = os.path.join(self._last_save_root, MODEL_BASENAME)
             if os.path.exists(model_path):
                 try: self.model.load(model_path)
                 except Exception as e:
-                    self._err(f"Failed to load model: {e}"); return
+                    self._err(f"Failed to load model: {e}")
+                    self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+                    return
             else:
                 self._err("No trained model. Run train first."); return
 
@@ -376,16 +596,18 @@ class SubWindow(QWidget):
             img_name = os.path.basename(image_path)
             pred = top_labels[0]
 
+            self.result.add_block("🔎 <b>Inference</b>")
+            if self._last_accuracy is not None:
+                self._hint(f"Last test accuracy (datasets/test): {self._last_accuracy:.2f}%")
+            self.result.add_block(f"Input: <code>{img_name}</code>")
+            self.result.add_block(f"Prediction: <span class='pred'>{pred}</span>")
+
             rows = "".join(
                 f"<tr><td>{i}</td><td>{lab}</td><td>{dist:.3f}</td></tr>"
                 for i, (lab, dist) in enumerate(zip(top_labels, top_dists), start=1)
             )
-
-            self.result.add_block("🔎 <b>Inference</b>")
-            self.result.add_block(f"Input: <code>{img_name}</code>")
-            self.result.add_block(f"Prediction: <span class='pred'>{pred}</span>")
             self.result.add_block(
-                f"<div class='dim' style='font-weight:600;margin-top:4px;margin-bottom:2px;'>Top‑{len(top_labels)} nearest</div>"
+                f"<div class='dim' style='font-weight:600;margin-top:4px;margin-bottom:2px;'>Top-{len(top_labels)} nearest</div>"
                 f"<table class='grid'>"
                 f"<tr><th>Rank</th><th>Label</th><th>Distance</th></tr>{rows}</table>"
             )
@@ -395,13 +617,18 @@ class SubWindow(QWidget):
 
     # ---------- etc ----------
     def _open_output_folder(self):
-        p = self.out_label.text().strip()
+        p = self._datasets_root.strip()
+        if not p: p = self._last_save_root or ""
         if not p: return
         try:
-            if sys.platform.startswith("win"): os.startfile(p)  # type: ignore
-            elif sys.platform == "darwin": __import__("subprocess").Popen(["open", p])
-            else: __import__("subprocess").Popen(["xdg-open", p])
-        except Exception: pass
+            if sys.platform.startswith("win"):
+                os.startfile(p)
+            elif sys.platform == "darwin":
+                __import__("subprocess").Popen(["open", p])
+            else:
+                __import__("subprocess").Popen(["xdg-open", p])
+        except Exception:
+            pass
 
     def _go_next(self):
         try:

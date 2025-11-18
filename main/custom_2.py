@@ -1,10 +1,10 @@
-# custom_2.py
 import sys, os, subprocess
 from functools import partial
 
 ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
 LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
 HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+
 MESSAGE_BOX_QSS = """
 * {
     font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
@@ -17,7 +17,7 @@ MESSAGE_BOX_QSS = """
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea,
-    QMessageBox, QSizePolicy, QGraphicsOpacityEffect, QLabel
+    QMessageBox, QSizePolicy, QGraphicsOpacityEffect
 )
 from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
 from PySide2.QtCore import Qt, QSize, Signal, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
@@ -25,7 +25,6 @@ from custom_3 import SubWindow as Window3
 from path_utils import get_dirs
 
 # ---------------------------------------------------------------------
-# custom_1의 QSS를 그대로 쓰기 위한 Fallback 상수(순환참조 시 사용)
 GLOBAL_FONT_QSS_FALLBACK = """
 * {
     font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
@@ -54,7 +53,6 @@ GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
 """
 # ---------------------------------------------------------------------
 
-# 프로젝트 상대 경로 확보
 CUSTOM_IMAGE_ROOT, BASE_NUMBER_DIR, KMEANS_SELECTED_DIR = get_dirs(__file__)
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
@@ -72,27 +70,47 @@ BUTTON_STYLE = """
 """
 
 
+# 경로 정규화/비교 유틸 ----------------------------------------------------
+def _canon_path(p: str) -> str:
+    """realpath + abspath + 대소문자까지 통일해서 비교용 문자열 생성"""
+    try:
+        return os.path.normcase(os.path.realpath(os.path.abspath(p)))
+    except Exception:
+        return os.path.normcase(os.path.abspath(p))
+
+
+def _same_dir(a: str, b: str) -> bool:
+    """가능하면 samefile, 아니면 정규화 문자열로 비교"""
+    try:
+        return os.path.samefile(a, b)
+    except Exception:
+        return _canon_path(a) == _canon_path(b)
+# ---------------------------------------------------------------------
+
+
 class TrainDatasetGroup(QGroupBox):
     completeness_changed = Signal(bool)
 
     def __init__(self, num_categories=3, base_dir=BASE_NUMBER_DIR, required_per_class=1):
         super().__init__("5. Training datasets of each category")
 
-        # ▶ custom_1의 GROUPBOX_WITH_FLOATING_TITLE을 그대로 적용
         try:
             from custom_1 import GROUPBOX_WITH_FLOATING_TITLE as GB_STYLE
         except Exception:
             GB_STYLE = GROUPBOX_WITH_FLOATING_TITLE_FALLBACK
-        
+
         self.setObjectName("TrainDSGroup")
         self.setStyleSheet(GB_STYLE + """
             QGroupBox#TrainDSGroup::title {
-                font-weight: 700;   /* 굵게 */
-                font-weight: bold;  /* QSS 호환용 */
+                font-weight: 700;
+                font-weight: bold;
             }
         """)
 
-        self.base_dir = base_dir
+        # 기준 경로(정규화)
+        self.base_dir = os.path.abspath(base_dir)
+        self._base_dir_canon = _canon_path(self.base_dir)
+
         self.required_per_class = max(1, int(required_per_class))
 
         self.category_inputs = []   # (dir_input, label_input)
@@ -100,12 +118,11 @@ class TrainDatasetGroup(QGroupBox):
         self._last_complete = None
 
         self._build_ui(num_categories)
-        self._on_fields_changed()   # 초기 상태 반영
+        self._on_fields_changed()
 
     def _build_ui(self, num_categories):
         outer_layout = QVBoxLayout(self)
 
-        # ── 한 줄 높이/간격(요청 반영: 살짝 키움) ──
         ROW_EDIT_H = 38
 
         if num_categories <= 5:
@@ -124,7 +141,7 @@ class TrainDatasetGroup(QGroupBox):
 
         add_top_bottom_stretch = num_categories <= 5
         if add_top_bottom_stretch:
-            v.addStretch(1)   # top stretch
+            v.addStretch(1)
 
         for i in range(1, num_categories + 1):
             h = QHBoxLayout()
@@ -152,7 +169,7 @@ class TrainDatasetGroup(QGroupBox):
 
             count_badge = QLabel(f"0/{self.required_per_class}")
             count_badge.setFixedWidth(70)
-            count_badge.setFixedHeight(ROW_EDIT_H - 4)  # 34px 정도
+            count_badge.setFixedHeight(ROW_EDIT_H - 4)
             count_badge.setAlignment(Qt.AlignCenter)
             count_badge.setStyleSheet(self._badge_style(0))
 
@@ -179,11 +196,10 @@ class TrainDatasetGroup(QGroupBox):
                 v.addStretch(1)
 
         if add_top_bottom_stretch:
-            v.addStretch(1)   # bottom stretch
+            v.addStretch(1)
 
         body.setLayout(v)
 
-        # ≤10 : 스크롤 없이 전부 보이기
         if num_categories <= 10:
             outer_layout.addWidget(body)
         else:
@@ -224,16 +240,23 @@ class TrainDatasetGroup(QGroupBox):
         cl.setStyleSheet(self._badge_style(n))
 
     def browse_number_folder(self, dir_input):
+        # DontResolveSymlinks 제거: 경로 표현을 최대한 단일화
         path = QFileDialog.getExistingDirectory(
-            self, "Select number folder (0~9)", self.base_dir,
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+            self,
+            "Select number folder (0~9)",
+            self.base_dir,
+            QFileDialog.ShowDirsOnly
         )
         if not path:
             return
+
         base = os.path.basename(os.path.normpath(path))
         parent = os.path.dirname(os.path.normpath(path))
 
-        if base.isdigit() and len(base) == 1 and os.path.normpath(parent).lower() == os.path.normpath(self.base_dir).lower():
+        base_ok = base.isdigit() and len(base) == 1
+        parent_ok = _same_dir(parent, self.base_dir)
+
+        if base_ok and parent_ok:
             dir_input.setText(path)
             try:
                 n = sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
@@ -266,10 +289,13 @@ class TrainDatasetGroup(QGroupBox):
                 return False
             if not os.path.isdir(d):
                 return False
+
             base = os.path.basename(os.path.normpath(d))
+            parent = os.path.dirname(os.path.normpath(d))
+
             if not (base.isdigit() and len(base) == 1):
                 return False
-            if os.path.normpath(os.path.dirname(d)).lower() != os.path.normpath(self.base_dir).lower():
+            if not _same_dir(parent, self.base_dir):
                 return False
             try:
                 n = sum(1 for f in os.listdir(d) if str(f).lower().endswith(IMG_EXTS))
@@ -302,23 +328,24 @@ class TrainDatasetGroup(QGroupBox):
 
 
 class Custom_2_Window(QWidget):
-    def __init__(self, num_categories=3, samples_per_class=1, prev_window=None):
+    def __init__(self, num_categories=3, samples_per_class=1, input_vector_length=0, selected_mem_kb=None, prev_window=None):
         super().__init__()
         self.num_categories = num_categories
         self.samples_per_class = max(1, int(samples_per_class))
+        self.input_vector_length = int(input_vector_length or 0)
+        self.selected_mem_kb = selected_mem_kb
         self.win3 = None
         self.prev_window = prev_window
-        self._orig_app_qss = ""   # 전역 스타일 복원용
+        self._orig_app_qss = ""
         self._setup_ui()
 
-    # custom_1과 동일한 전역 폰트 QSS를 QApplication에 적용/복원
     def _apply_global_font(self):
         app = QApplication.instance()
         if not app:
             return
         self._orig_app_qss = app.styleSheet() or ""
         try:
-            from custom_1 import GLOBAL_FONT_QSS   # ← 순환참조 없이 런타임 import
+            from custom_1 import GLOBAL_FONT_QSS
         except Exception:
             GLOBAL_FONT_QSS = GLOBAL_FONT_QSS_FALLBACK
         app.setStyleSheet(self._orig_app_qss + ("\n" + GLOBAL_FONT_QSS if GLOBAL_FONT_QSS else ""))
@@ -332,9 +359,7 @@ class Custom_2_Window(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
-        # ★ 전역 폰트 QSS를 먼저 적용 — QGroupBox::title까지 동일한 글씨체로
         self._apply_global_font()
-
         self.setFixedSize(800, 800)
 
         container = QWidget(self)
@@ -389,7 +414,7 @@ class Custom_2_Window(QWidget):
         bar.mouseMoveEvent  = self.mouseMoveEvent
 
         def _go_home():
-            self._restore_global_font()   # 전역 스타일 복원
+            self._restore_global_font()
             self.close()
 
         close_btn.clicked.connect(_go_home)
@@ -418,24 +443,25 @@ class Custom_2_Window(QWidget):
             self.win3 = Window3(
                 selection=sel,
                 samples_per_class=self.samples_per_class,
-                prev_window=self.prev_window
+                prev_window=self.prev_window,
+                exp_params={
+                    "num_classes": self.num_categories,
+                    "samples_per_class": self.samples_per_class,
+                    "input_vec_len": self.input_vector_length,
+                    "memory_kb": self.selected_mem_kb
+                }
             )
 
-        # 다음 창 위치/크기 맞추기
         try:
             self.win3.setGeometry(self.geometry())
         except Exception:
             self.win3.move(self.pos())
 
-        # 1) 다음 창 먼저 정상 표시
         self.win3.show()
         self.win3.raise_()
         self.win3.activateWindow()
 
-        # 2) 현재 창 화면을 스냅샷(픽스맵)으로 캡처
-        snap = self.grab()  # QWidget.grab()은 알파(모서리 라운드 포함)를 보존
-
-        # 3) 다음 창 위에 오버레이 라벨을 하나 얹고, 캡처 이미지를 붙임
+        snap = self.grab()
         overlay = QLabel(self.win3)
         overlay.setPixmap(snap)
         overlay.setGeometry(0, 0, self.width(), self.height())
@@ -443,38 +469,22 @@ class Custom_2_Window(QWidget):
         overlay.raise_()
         overlay.show()
 
-        # 4) 오버레이만 투명하게 사라지는 효과
         effect = QGraphicsOpacityEffect(overlay)
         overlay.setGraphicsEffect(effect)
 
         anim = QPropertyAnimation(effect, b"opacity", self)
-        anim.setDuration(180)  # 160~220ms 권장
+        anim.setDuration(180)
         anim.setStartValue(1.0)
         anim.setEndValue(0.0)
         anim.setEasingCurve(QEasingCurve.InOutQuad)
 
-        # 5) 끝나면 오버레이 제거 + 이전 창 숨김(종료 아님)
         def _done():
             overlay.deleteLater()
-            # 이전 창은 보이지 않게만(앱 종료/비는 구간 방지)
             self.hide()
 
-        # 애니메이션 가비지컬렉션 방지
         self._overlay_anim = anim
         anim.finished.connect(_done)
         anim.start()
-
-
-        def _end():
-            # hide로 전환(앱 종료/깜빡임 방지), 다음에 다시 열릴 수 있도록 원복
-            self.hide()
-            try:
-                self.setWindowOpacity(1.0)
-            except Exception:
-                pass
-
-        self._anim_group.finished.connect(_end)
-        self._anim_group.start()
 
     def go_back(self):
         if self.prev_window is not None:
@@ -485,7 +495,7 @@ class Custom_2_Window(QWidget):
         self.close()
 
     def closeEvent(self, e):
-        self._restore_global_font()  # 다른 방식으로 닫혀도 복원
+        self._restore_global_font()
         super().closeEvent(e)
 
     def mousePressEvent(self, e):
@@ -494,14 +504,13 @@ class Custom_2_Window(QWidget):
         if hasattr(self, 'offset') and e.buttons() == Qt.LeftButton:
             self.move(self.pos() + e.pos() - self.offset)
 
-def launch_training_window(num_categories, samples_per_class, prev_window=None):
-    window = Custom_2_Window(num_categories=num_categories, samples_per_class=samples_per_class, prev_window=prev_window)
-    window.show()
 
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    # 단독 실행 시 이전 창이 없으므로 Back은 현재 창만 닫습니다.
-    window = Custom_2_Window()
+def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
+    window = Custom_2_Window(
+        num_categories=num_categories,
+        samples_per_class=samples_per_class,
+        input_vector_length=input_vector_length,
+        selected_mem_kb=selected_mem_kb,
+        prev_window=prev_window
+    )
     window.show()
-    sys.exit(app.exec_())

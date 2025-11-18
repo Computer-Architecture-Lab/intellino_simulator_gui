@@ -3,14 +3,36 @@ import sys
 import os
 import subprocess
 
-from PySide2.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, \
-    QGraphicsDropShadowEffect, QGroupBox, QProgressBar, QLineEdit, QFileDialog, QTextEdit, QSizePolicy, QStyle
+from PySide2.QtWidgets import (
+    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
+    QGraphicsDropShadowEffect, QGroupBox, QProgressBar, QLineEdit, QFileDialog,
+    QTextEdit, QSizePolicy, QStyle
+)
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QTimer, Signal, QPoint
+from PySide2.QtCore import Qt, QSize, QTimer, Signal
 
-ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
-HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+# ──────────────────────────────────────────────
+# exe/개발 공통 리소스 경로 헬퍼
+def resource_path(name: str) -> str:
+    """
+    PyInstaller(onefile)의 _MEIPASS와 개발 환경(__file__)을 모두 커버.
+    빌드 시 ;main 으로 넣은 데이터도 자동으로 탐색한다.
+    """
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(base, name),             # ;.
+        os.path.join(base, "main", name),     # ;main (우리가 쓰는 구조)
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), name),  # dev
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]  # 마지막 안전장치
+# ──────────────────────────────────────────────
+
+LOGO_PATH = resource_path("intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("home.png")
+
 
 # 1. Dataset 섹션 (클래스 분리)
 class DatasetSection(QWidget):
@@ -173,7 +195,6 @@ class InferenceSection(QWidget):
     def startFunction(self):
         file_path = self.file_input.text()
         print(f"[DEBUG] Start button clicked, file = {file_path}")
-        # if file_path:
         self.inference_requested.emit(file_path)
 
 
@@ -239,6 +260,7 @@ class SubWindow(QWidget):
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(15, 0, 15, 0)
 
+        # ── 로고
         logo_label = QLabel()
         pm = QPixmap(LOGO_PATH)
         if not pm.isNull():
@@ -248,10 +270,10 @@ class SubWindow(QWidget):
             logo_label.setText("intellino")
             logo_label.setStyleSheet("font-weight:600;")
 
+        # ── 홈 아이콘 (리소스 없으면 표준 아이콘으로 폴백)
         close_btn = QPushButton()
         home_icon = QIcon(HOME_ICON_PATH)
         if home_icon.isNull():
-            # 표준 홈 아이콘으로 폴백
             home_icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
         close_btn.setIcon(home_icon)
         close_btn.setIconSize(QSize(24, 24))
@@ -260,7 +282,6 @@ class SubWindow(QWidget):
             QPushButton { border: none; background-color: transparent; }
             QPushButton:hover { background-color: #dee2e6; border-radius: 17px; }
         """)
-
         close_btn.clicked.connect(self.close)
 
         title_layout.addWidget(logo_label)
@@ -269,7 +290,6 @@ class SubWindow(QWidget):
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(10, 60, 10, 10)
-
 
         # 1. Dataset (클래스로 분리된 섹션 사용)
         self.dataset_section = DatasetSection()
@@ -293,6 +313,7 @@ class SubWindow(QWidget):
         # self.dataset_section.cifar_clicked.connect(self.cifarFunction)
         # self.dataset_section.speech_clicked.connect(self.speechFunction)
 
+        # 드래그 이동
         self.offset = None
         title_bar.mousePressEvent = self.mousePressEvent
         title_bar.mouseMoveEvent = self.mouseMoveEvent
@@ -300,7 +321,7 @@ class SubWindow(QWidget):
     # run inference
     def run_inference(self, file_path):
         print(f"[DEBUG] run_inference called with: {file_path}")
-        test_path = os.path.join(os.path.dirname(__file__), "mnist.py")
+        test_path = os.path.join(os.path.dirname(__file__), "mnist.py")  # 필요 시 resource_path("mnist.py")로 교체
         self.infer_process = subprocess.Popen([sys.executable, test_path, "infer", file_path],
                                               stdout=subprocess.PIPE,
                                               stderr=subprocess.STDOUT,
@@ -329,7 +350,7 @@ class SubWindow(QWidget):
 
     # Dataset 버튼 핸들러
     def mnistFunction(self):
-        train_path = os.path.join(os.path.dirname(__file__), "mnist.py")
+        train_path = os.path.join(os.path.dirname(__file__), "mnist.py")  # 필요 시 resource_path("mnist.py")
         self.process = subprocess.Popen([sys.executable, train_path],
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT,
