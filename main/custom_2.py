@@ -4,6 +4,7 @@ from functools import partial
 ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
 LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
 HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+
 MESSAGE_BOX_QSS = """
 * {
     font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
@@ -16,7 +17,7 @@ MESSAGE_BOX_QSS = """
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea,
-    QMessageBox, QSizePolicy, QGraphicsOpacityEffect, QLabel
+    QMessageBox, QSizePolicy, QGraphicsOpacityEffect
 )
 from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
 from PySide2.QtCore import Qt, QSize, Signal, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
@@ -69,6 +70,24 @@ BUTTON_STYLE = """
 """
 
 
+# 경로 정규화/비교 유틸 ----------------------------------------------------
+def _canon_path(p: str) -> str:
+    """realpath + abspath + 대소문자까지 통일해서 비교용 문자열 생성"""
+    try:
+        return os.path.normcase(os.path.realpath(os.path.abspath(p)))
+    except Exception:
+        return os.path.normcase(os.path.abspath(p))
+
+
+def _same_dir(a: str, b: str) -> bool:
+    """가능하면 samefile, 아니면 정규화 문자열로 비교"""
+    try:
+        return os.path.samefile(a, b)
+    except Exception:
+        return _canon_path(a) == _canon_path(b)
+# ---------------------------------------------------------------------
+
+
 class TrainDatasetGroup(QGroupBox):
     completeness_changed = Signal(bool)
 
@@ -79,7 +98,7 @@ class TrainDatasetGroup(QGroupBox):
             from custom_1 import GROUPBOX_WITH_FLOATING_TITLE as GB_STYLE
         except Exception:
             GB_STYLE = GROUPBOX_WITH_FLOATING_TITLE_FALLBACK
-        
+
         self.setObjectName("TrainDSGroup")
         self.setStyleSheet(GB_STYLE + """
             QGroupBox#TrainDSGroup::title {
@@ -88,7 +107,10 @@ class TrainDatasetGroup(QGroupBox):
             }
         """)
 
-        self.base_dir = base_dir
+        # 기준 경로(정규화)
+        self.base_dir = os.path.abspath(base_dir)
+        self._base_dir_canon = _canon_path(self.base_dir)
+
         self.required_per_class = max(1, int(required_per_class))
 
         self.category_inputs = []   # (dir_input, label_input)
@@ -218,16 +240,23 @@ class TrainDatasetGroup(QGroupBox):
         cl.setStyleSheet(self._badge_style(n))
 
     def browse_number_folder(self, dir_input):
+        # DontResolveSymlinks 제거: 경로 표현을 최대한 단일화
         path = QFileDialog.getExistingDirectory(
-            self, "Select number folder (0~9)", self.base_dir,
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+            self,
+            "Select number folder (0~9)",
+            self.base_dir,
+            QFileDialog.ShowDirsOnly
         )
         if not path:
             return
+
         base = os.path.basename(os.path.normpath(path))
         parent = os.path.dirname(os.path.normpath(path))
 
-        if base.isdigit() and len(base) == 1 and os.path.normpath(parent).lower() == os.path.normpath(self.base_dir).lower():
+        base_ok = base.isdigit() and len(base) == 1
+        parent_ok = _same_dir(parent, self.base_dir)
+
+        if base_ok and parent_ok:
             dir_input.setText(path)
             try:
                 n = sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
@@ -260,10 +289,13 @@ class TrainDatasetGroup(QGroupBox):
                 return False
             if not os.path.isdir(d):
                 return False
+
             base = os.path.basename(os.path.normpath(d))
+            parent = os.path.dirname(os.path.normpath(d))
+
             if not (base.isdigit() and len(base) == 1):
                 return False
-            if os.path.normpath(os.path.dirname(d)).lower() != os.path.normpath(self.base_dir).lower():
+            if not _same_dir(parent, self.base_dir):
                 return False
             try:
                 n = sum(1 for f in os.listdir(d) if str(f).lower().endswith(IMG_EXTS))
@@ -471,6 +503,7 @@ class Custom_2_Window(QWidget):
     def mouseMoveEvent(self, e):
         if hasattr(self, 'offset') and e.buttons() == Qt.LeftButton:
             self.move(self.pos() + e.pos() - self.offset)
+
 
 def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
     window = Custom_2_Window(

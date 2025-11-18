@@ -1,20 +1,42 @@
 import sys
 import os
+from pathlib import Path
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QGraphicsDropShadowEffect, QSizePolicy
 )
-from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
+from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QPainter, QPalette
 from PySide2.QtCore import Qt, QSize
 
 # matplotlib 임베딩
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import matplotlib as mpl
 
-ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
-HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+# ──────────────────────────────────────────────
+# exe/개발 환경 공통 리소스 경로 헬퍼
+def resource_path(relative_path: str) -> str:
+    """
+    PyInstaller(onefile) 실행 시 임시 폴더(sys._MEIPASS)와
+    개발 환경(__file__ 기준)을 모두 커버.
+    빌드 때 dest가 '.' 또는 'main'이어도 자동 탐색.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)).resolve()
+    candidates = [
+        base / relative_path,            # --add-data "...;."
+        base / "main" / relative_path,  # --add-data "...;main"
+        base.parent / relative_path,    # 혹시 상위 폴더에 있을 때
+    ]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return str(candidates[0])  # 못 찾으면 1순위 경로 반환(디버깅용)
+# ──────────────────────────────────────────────
+
+# 리소스 경로
+LOGO_PATH = resource_path("intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("home.png")
 
 # ── 실험 상태 전역 ─────────────────────────────────────────
 class ExperimentState:
@@ -72,10 +94,13 @@ class TitleBar(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pix = QPixmap(LOGO_PATH).scaled(
-            65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-        logo_label.setPixmap(pix)
+        pm = QPixmap(LOGO_PATH)
+        if pm.isNull():
+            logo_label.setText("intellino")
+            logo_label.setStyleSheet("font-weight:600;")
+        else:
+            pix = pm.scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo_label.setPixmap(pix)
 
         home_btn = QPushButton()
         home_btn.setIcon(QIcon(HOME_ICON_PATH))
@@ -116,26 +141,60 @@ class TitleBar(QWidget):
 class AccuracyCanvas(FigureCanvas):
     """
     - X축 슬롯: 항상 5칸 고정
-    - 막대 색상/두께: 기존 코드 유지 (cornflowerblue, 기본 0.8의 1/2 폭)
+    - 막대 색상/두께: 기존 유지
+    - ✅ 배경을 항상 완전 불투명(white)으로 강제
     """
     DEFAULT_BAR_WIDTH = 0.8
     BAR_WIDTH_SCALE   = 1.0 / 2.0
     BAR_COLOR         = "cornflowerblue"
 
     def __init__(self, parent=None):
-        fig = Figure(figsize=(5.0, 4.0), tight_layout=True)
+        # Matplotlib 전역 배경/투명 설정 방지
+        mpl.rcParams['figure.facecolor'] = 'white'
+        mpl.rcParams['axes.facecolor']   = 'white'
+        mpl.rcParams['savefig.facecolor'] = 'white'
+        mpl.rcParams['savefig.transparent'] = False
+
+        fig = Figure(figsize=(5.0, 4.0), tight_layout=True, facecolor='white', edgecolor='white')
         super().__init__(fig)
         self.setParent(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # ✅ Qt 위젯 배경을 완전 불투명 흰색으로 강제
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)     # Qt가 투명 합성하지 않도록 힌트
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        self.setAutoFillBackground(True)
+
+        pal = self.palette()
+        pal.setColor(QPalette.Window, Qt.white)
+        pal.setColor(QPalette.Base,   Qt.white)
+        self.setPalette(pal)
+        self.setStyleSheet("background-color: white;")
+
         self.ax = self.figure.add_subplot(111)
         self._init_axes()
 
     def _init_axes(self):
         self.ax.clear()
+
+        # ✅ Figure/Axes 모두 흰색·불투명 강제
+        self.figure.patch.set_facecolor('white')
+        self.figure.patch.set_alpha(1.0)
+        self.ax.set_facecolor('white')
+        self.ax.patch.set_alpha(1.0)
+
         self.ax.set_ylim(0, 100)
         self.ax.set_ylabel("Accuracy (%)")
         self.ax.set_xlabel("Parameters")
         self.ax.grid(True, axis='y', linestyle='--', alpha=0.3)
+
+    # ✅ 페인트 전에 전체 영역을 흰색으로 칠해 투명 채널/합성 제거
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.fillRect(self.rect(), Qt.white)
+        p.end()
+        super().paintEvent(event)
 
     def update_plot(self, labels, accuracies):
         self._init_axes()
@@ -189,22 +248,27 @@ class ExperimentGraphSection(QWidget):
         """)
 
         v = QVBoxLayout()
-        # ▶ 내부 레이아웃 아랫여백: 28 → 16
         v.setContentsMargins(10, 10, 10, 16)
         v.setSpacing(8)
 
-        self.canvas = AccuracyCanvas()
-        # ▶ 캔버스 높이: 560 → 520 (원래보다 크되 너무 과하지 않게)
-        self.canvas.setMinimumHeight(520)
+        # ✅ 백플레이트(완전 흰색) 위에 캔버스를 얹고, 섀도우는 백플레이트에만 적용
+        self.backplate = QWidget()
+        self.backplate.setStyleSheet("background-color: white; border-radius: 8px;")
+        bp_layout = QVBoxLayout(self.backplate)
+        bp_layout.setContentsMargins(12, 12, 12, 12)  # 캔버스와 가장자리 간격
+        bp_layout.setSpacing(0)
 
-        shadow = QGraphicsDropShadowEffect(self.canvas)
+        self.canvas = AccuracyCanvas()
+        self.canvas.setMinimumHeight(520)
+        bp_layout.addWidget(self.canvas)
+
+        shadow = QGraphicsDropShadowEffect(self.backplate)
         shadow.setBlurRadius(18)
         shadow.setColor(QColor(0, 0, 0, 60))
         shadow.setOffset(0, 0)
-        self.canvas.setGraphicsEffect(shadow)
+        self.backplate.setGraphicsEffect(shadow)
 
-        v.addWidget(self.canvas)
-        # ▶ 캔버스 하단 추가 간격: 20 → 8
+        v.addWidget(self.backplate)
         v.addSpacing(8)
 
         group.setLayout(v)
@@ -227,7 +291,7 @@ class ExperimentWindow(QWidget):
 
     def _setup_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_TranslucentBackground)  # 프레임리스 둥근 모서리 유지
         self.setFixedSize(800, 800)
 
         container = QWidget(self)
@@ -252,7 +316,6 @@ class ExperimentWindow(QWidget):
         self.graph_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.graph_section)
 
-        # 아래 여백은 유지(필요 시 조정 가능)
         layout.addStretch(1)
 
         # 하단 버튼들

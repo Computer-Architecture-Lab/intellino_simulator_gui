@@ -1,15 +1,45 @@
 import sys, os
-ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
-HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QTextBrowser,
-    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QButtonGroup
+    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QButtonGroup,
+    QStyle,
 )
 from PySide2.QtCore import QPropertyAnimation, Qt, QSize
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from custom_2 import launch_training_window
+
+# ──────────────────────────────────────────────
+# 리소스 경로 헬퍼: exe/개발 환경 모두에서 안전하게 파일 찾기
+def resource_path(name: str) -> str:
+    """
+    PyInstaller(onefile)로 빌드한 exe와 개발 중 파이썬 실행 둘 다에서
+    이미지/데이터 파일의 실제 경로를 찾는다.
+    - 빌드 시 --add-data "...;main" 구조를 우선적으로 탐색한다.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
+
+    # 1) onefile 실행 시: PyInstaller가 압축을 푼 임시 폴더
+    if hasattr(sys, "_MEIPASS"):
+        base = sys._MEIPASS
+        candidates += [
+            os.path.join(base, name),              # ;.
+            os.path.join(base, "main", name),      # ;main  ← 우리가 쓰는 구조
+        ]
+
+    # 2) 개발 환경: 소스 파일 기준
+    candidates += [
+        os.path.join(here, name),
+        os.path.join(here, "main", name),
+    ]
+
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    # 마지막 안전장치
+    return candidates[0] if candidates else name
+# ──────────────────────────────────────────────
 
 # 두 번째 이미지와 같은 큰 테두리 높이(필요시 140~180 사이에서 조정)
 SECOND_STYLE_FIXED_HEIGHT = 160
@@ -95,11 +125,21 @@ class TitleBar(QWidget):
         layout.setContentsMargins(15, 0, 15, 0)
 
         logo_label = QLabel()
-        pixmap = QPixmap(LOGO_PATH).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        logo_label.setPixmap(pixmap)
+        logo_png = resource_path("intellino_TM_transparent.png")
+        pm = QPixmap(logo_png)
+        if pm.isNull():
+            logo_label.setText("intellino")
+            logo_label.setStyleSheet("font-weight:600;")
+        else:
+            pixmap = pm.scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo_label.setPixmap(pixmap)
 
         close_btn = QPushButton()
-        close_btn.setIcon(QIcon(HOME_ICON_PATH))
+        home_icon_path = resource_path("home.png")
+        icon = QIcon(home_icon_path)
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
+        close_btn.setIcon(icon)
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34, 34)
         close_btn.setStyleSheet("""
@@ -144,7 +184,6 @@ class IntegerInputGroup(QGroupBox):
 
         self.input = QLineEdit()
         self.input.setPlaceholderText(example_text)
-        # 0 이상 정수만 허용
         self.input.setValidator(QIntValidator(0, 999999))
         self.input.setFixedHeight(35)
         self.input.setStyleSheet("""
@@ -418,7 +457,6 @@ class Custom_1_Window(QWidget):
         )
 
     def nextFunction(self):
-        # custom_2.launch_training_window(…)에 파라미터 전달(그래프 X축 라벨용)
         launch_training_window(
             num_categories=self.category_input.get_value(),
             samples_per_class=self.train_data_input.get_value(),
