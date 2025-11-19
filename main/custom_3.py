@@ -1,20 +1,56 @@
 # custom_3.py — train/test split with accuracy + native file dialog
-# 변경: 실험 상태(EXPERIMENT_STATE)에 [파라미터 라벨, 정확도] 기록
+# 변경 사항 요약:
+# 1) 전처리 통일: 학습(load), 평가(test), 추론(inference) 모두 preprocess_image() 하나만 사용
+# 2) 추론 결과 정오 표시: datasets/test/<label>/... 에서 고른 경우 GT(폴더명)와 비교하여 ✅/❌ 출력
+# 3) 경로 유틸 보강: exe/개발 공통 resource_path, 출력 루트 쓰기 가능 경로 자동 선택
+# 4) 학습 로그 강화: label ↔ dir 매핑 및 train/test 개수 로깅
+# 5) ★ 전환 애니메이션 수정: 이전 창 스냅샷 → 흰색 오버레이 페이드아웃(뒤 화면 비침 완전 차단)
 
 import sys, os, shutil, datetime, numpy as np, traceback, pickle, cv2
-from PIL import Image
+from PIL import Image  # (남겨두지만 학습·평가·추론은 모두 OpenCV 기반 전처리 사용)
 
 # 추론 경로 제어(기본 False: 어느 경로든 허용, 단 학습 파일 차단)
 INFER_ONLY_FROM_TEST = False
 
-ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH   = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
-HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+# ──────────────────────────────────────────────
+# exe/개발 환경 공통 리소스 경로 헬퍼
+def resource_path(name: str) -> str:
+    """
+    PyInstaller(onefile) 실행 시 임시 폴더(sys._MEIPASS)와
+    개발 환경(__file__ 기준)을 모두 커버.
+    빌드 때 --add-data "...;main" 구조를 우선 탐색한다.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
+
+    # 1) onefile 실행 시: PyInstaller가 압축을 풀어 둔 임시 폴더
+    if hasattr(sys, "_MEIPASS"):
+        base = sys._MEIPASS
+        candidates += [
+            os.path.join(base, name),              # ;.
+            os.path.join(base, "main", name),      # ;main  ← 우리가 쓰는 구조
+        ]
+
+    # 2) 개발 환경: 소스 파일 기준
+    candidates += [
+        os.path.join(here, name),
+        os.path.join(here, "main", name),
+    ]
+
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    # 마지막 안전장치
+    return candidates[0] if candidates else name
+# ──────────────────────────────────────────────
+
+LOGO_PATH      = resource_path("intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("home.png")
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QGraphicsDropShadowEffect, QSizePolicy, QGraphicsOpacityEffect,
-    QLineEdit, QFileDialog, QProgressBar, QTextBrowser, QMessageBox
+    QLineEdit, QFileDialog, QProgressBar, QTextBrowser, QMessageBox, QStyle
 )
 from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor, QTextCursor
 from PySide2.QtCore import Qt, QSize, QTimer, QPropertyAnimation, QEasingCurve
@@ -25,7 +61,56 @@ from custom_4 import EXPERIMENT_STATE
 
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
+# 원래 경로 계산
 CUSTOM_IMAGE_ROOT, NUMBER_IMAGE_DIR, DEFAULT_OUTPUT_ROOT = get_dirs(__file__)
+
+# exe에서 경로가 없을 때(또는 구조가 다른 경우) 보정 시도
+try:
+    main_dir = os.path.dirname(LOGO_PATH)  # 보통 '_MEIPASS/main'
+    if not os.path.isdir(CUSTOM_IMAGE_ROOT):
+        cand = os.path.join(main_dir, "custom_image")
+        if os.path.isdir(cand):
+            CUSTOM_IMAGE_ROOT = cand
+    if not os.path.isdir(NUMBER_IMAGE_DIR):
+        cand = os.path.join(main_dir, "custom_image", "number_image")
+        if os.path.isdir(cand):
+            NUMBER_IMAGE_DIR = cand
+except Exception:
+    pass
+
+def _is_writable_dir(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        test_file = os.path.join(path, ".write_test.tmp")
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return True
+    except Exception:
+        return False
+
+def _resolve_output_root(preferred: str) -> str:
+    """
+    저장 루트가 패키지 내부(읽기 전용)일 수 있으니,
+    쓰기 가능한 사용자 폴더로 자동 폴백.
+    우선순위: preferred -> %LOCALAPPDATA%/iCore -> 사용자 홈/iCore_runs
+    """
+    candidates = []
+    if preferred:
+        candidates.append(preferred)
+    localapp = os.environ.get("LOCALAPPDATA")
+    if localapp:
+        candidates.append(os.path.join(localapp, "iCore"))
+    candidates.append(os.path.join(os.path.expanduser("~"), "iCore_runs"))
+
+    for c in candidates:
+        if _is_writable_dir(c):
+            return c
+    # 마지막 최후의 보루: 현재 작업 디렉터리
+    fallback = os.path.join(os.getcwd(), "iCore_runs")
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
+
 MODEL_BASENAME = "custom_model.pkl"
 
 BUTTON_STYLE = """
@@ -38,38 +123,32 @@ BUTTON_STYLE = """
 """
 
 # ---------------------------
-# 데이터 유틸
-def load_images_from_dir(dir_path: str):
-    files = [os.path.join(dir_path, f) for f in sorted(os.listdir(dir_path))
-             if str(f).lower().endswith(IMG_EXTS)]
-    X, keep = [], []
-    for p in files:
-        try:
-            img = Image.open(p).convert("L").resize((28,28))
-            arr = np.asarray(img, dtype=np.float32) / 255.0
-            X.append(arr.flatten()); keep.append(os.path.abspath(p))
-        except Exception:
-            pass
-    if not X:
-        return np.empty((0,784), dtype=np.float32), []
-    return np.stack(X, axis=0), keep
-
-def vectorize_like_training(path: str):
-    try:
-        img = Image.open(path).convert("L").resize((28,28))
-        return (np.asarray(img, dtype=np.float32) / 255.0).reshape(-1)
-    except Exception:
-        return None
-
-def preprocess_user_image(image_path: str) -> np.ndarray:
-    image = cv2.imread(image_path)
-    if image is None:
+# 전처리(단일 파이프라인)
+def preprocess_image(image_path: str) -> np.ndarray:
+    """
+    학습/평가/추론 공통 전처리:
+    1) Grayscale → GaussianBlur(3x3)
+    2) OTSU 이진화(필요시 반전)
+    3) 유효 픽셀 바운딩 박스 크롭
+    4) 긴 변 기준 20px로 비율 유지 리사이즈
+    5) 28x28 중앙 배치(검은 바탕)
+    출력: (784,) float32 [0,1]
+    """
+    img = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    if img is None:
         raise ValueError(f"Unable to open image: {image_path}")
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (3,3), 0)
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_OTSU)
+    # OTSU는 THRESH_BINARY와 조합하는 것이 안전
+    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # 배경이 흰색이 되도록 반전(필요시)
+    # 평균이 밝으면(>127) 배경이 흰색, 글자가 검은색일 가능성이 큼.
+    # 여기서는 글자(전경)를 흰색으로 맞추기 위해 반전.
     if np.mean(binary) > 127:
         binary = 255 - binary
+
     coords = cv2.findNonZero(binary)
     if coords is None:
         cropped = binary
@@ -94,6 +173,33 @@ def preprocess_user_image(image_path: str) -> np.ndarray:
     canvas[yo:yo+resized.shape[0], xo:xo+resized.shape[1]] = resized
 
     return (canvas.astype(np.float32) / 255.0).reshape(-1)
+
+# ---------------------------
+# 데이터 유틸 (전처리 통일 버전)
+def load_images_from_dir(dir_path: str):
+    files = [os.path.join(dir_path, f) for f in sorted(os.listdir(dir_path))
+             if str(f).lower().endswith(IMG_EXTS)]
+    X, keep = [], []
+    for p in files:
+        try:
+            vec = preprocess_image(p)  # ← 통일
+            X.append(vec); keep.append(os.path.abspath(p))
+        except Exception:
+            pass
+    if not X:
+        return np.empty((0,784), dtype=np.float32), []
+    return np.stack(X, axis=0), keep
+
+def vectorize_like_training(path: str):
+    # 호환성을 위해 함수 유지하되 공통 전처리 사용
+    try:
+        return preprocess_image(path)
+    except Exception:
+        return None
+
+# 과거 함수명 유지(외부 코드 의존 대비)
+def preprocess_user_image(image_path: str) -> np.ndarray:
+    return preprocess_image(image_path)
 
 # ---------------------------
 # 간단 최근접-이웃 모델(L1)
@@ -157,7 +263,11 @@ class TitleBar(QWidget):
             logo.setPixmap(pm.scaled(65,65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
         home = QPushButton()
-        home.setIcon(QIcon(HOME_ICON_PATH)); home.setIconSize(QSize(24,24))
+        icon = QIcon(HOME_ICON_PATH)
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
+        home.setIcon(icon)
+        home.setIconSize(QSize(24,24))
         home.setFixedSize(34,34)
         home.setStyleSheet("QPushButton{border:none;background:transparent;} "
                            "QPushButton:hover{background:#dee2e6; border-radius:17px;}")
@@ -167,8 +277,8 @@ class TitleBar(QWidget):
         self._offset = None
 
     def _on_home(self):
-        app = QApplication.instance()
-        if app: app.setStyleSheet("")
+        #app = QApplication.instance()
+        #if app: app.setStyleSheet("")
         if self._parent: self._parent.close()
 
     def mousePressEvent(self, e: QMouseEvent):
@@ -180,7 +290,7 @@ class TitleBar(QWidget):
         self._offset = None
 
 class ProgressSection(QWidget):
-    def __init__(self, title="6. Train"):
+    def __init__(self, title="7. Train"):
         super().__init__()
         g = QGroupBox(title); g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
@@ -231,7 +341,7 @@ class ResultView(QTextBrowser):
 class InferenceSection(QWidget):
     def __init__(self):
         super().__init__()
-        title = "8. Inference" if not INFER_ONLY_FROM_TEST else "8. Inference (use datasets/test)"
+        title = "9. Inference" if not INFER_ONLY_FROM_TEST else "8. Inference (use datasets/test)"
         g = QGroupBox(title); g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
             "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
@@ -256,7 +366,8 @@ class SubWindow(QWidget):
         super().__init__()
         self.selection = selection
         self.samples_per_class = max(1, int(samples_per_class))
-        self.output_root = output_root
+        # 출력 루트는 반드시 쓰기 가능한 곳으로 해석
+        self.output_root = _resolve_output_root(output_root)
         self.prev_window = prev_window
 
         self.exp_params = exp_params or {}
@@ -277,50 +388,7 @@ class SubWindow(QWidget):
         self._setup_ui()
         QTimer.singleShot(150, self._run_kmeans_and_train)
 
-    def _setup_ui(self):
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground); self.setFixedSize(800,800)
-
-        container = QWidget(self); container.setGeometry(0,0,800,800)
-        container.setStyleSheet("background-color:white; border-radius:15px;")
-        shadow = QGraphicsDropShadowEffect(self); shadow.setBlurRadius(30); shadow.setColor(QColor(0,0,0,100))
-        self.setGraphicsEffect(shadow)
-
-        self.title_bar = TitleBar(self); self.title_bar.setParent(container); self.title_bar.setGeometry(0,0,800,50)
-
-        lay = QVBoxLayout(container); lay.setContentsMargins(20,60,20,20); lay.setSpacing(20)
-
-        self.progress = ProgressSection("6. Train"); lay.addWidget(self.progress)
-
-        out_g = QGroupBox("7. Output folder"); out_g.setStyleSheet(
-            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
-            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
-        )
-        row = QHBoxLayout()
-        self.out_label = UILabel = QLabel("")
-        self.out_label.setStyleSheet("font-size:13px;")
-        self.open_btn = QPushButton("Open folder"); self.open_btn.setFixedSize(110,32); self.open_btn.setStyleSheet(BUTTON_STYLE)
-        self.open_btn.clicked.connect(self._open_output_folder)
-        row.addWidget(self.out_label); row.addStretch(); row.addWidget(self.open_btn); out_g.setLayout(row)
-        lay.addWidget(out_g)
-
-        self.infer = InferenceSection(); lay.addWidget(self.infer)
-        self.infer.browse_btn.clicked.connect(self._browse_infer_file)
-        self.infer.start_btn.clicked.connect(self._start_inference)
-
-        res_g = QGroupBox("9. Result"); res_g.setStyleSheet(
-            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
-            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
-        )
-        self.result = ResultView()
-        rg_lay = QVBoxLayout(res_g); rg_lay.addWidget(self.result)
-        lay.addWidget(res_g)
-
-        btn_row = QHBoxLayout()
-        self.next_btn = QPushButton("Next"); self.next_btn.setFixedSize(110,38); self.next_btn.setStyleSheet(BUTTON_STYLE)
-        self.next_btn.clicked.connect(self._go_next); self.next_btn.setEnabled(False)
-        btn_row.addStretch(); btn_row.addWidget(self.next_btn); lay.addLayout(btn_row)
-
+    # ------------ helpers ------------
     def _ok(self, text:str):   self.result.add_block(f"<span class='ok'>{text}</span>")
     def _info(self, text:str): self.result.add_block(f"<span class='info'>{text}</span>")
     def _hint(self, text:str): self.result.add_block(f"<span class='dim'>{text}</span>")
@@ -332,6 +400,15 @@ class SubWindow(QWidget):
     def _is_training_file(self, p: str) -> bool:
         npth = self._norm(p)
         return (npth in self._train_originals) or (npth in self._train_copies)
+
+    def _is_subpath(self, child: str, parent: str) -> bool:
+        """child 가 parent 하위 경로인지 안전하게 확인(드라이브 상이 예외 대응)."""
+        try:
+            child_real  = os.path.realpath(child)
+            parent_real = os.path.realpath(parent)
+            return os.path.commonpath([child_real, parent_real]) == parent_real
+        except Exception:
+            return False
 
     def _make_param_label(self) -> str:
         c = self.exp_params.get("num_classes", self.num_categories)
@@ -345,9 +422,57 @@ class SubWindow(QWidget):
         if m is not None: parts.append(f"M{m}K")
         return " / ".join(map(str, parts))
 
+    # ------------ UI ------------
+    def _setup_ui(self):
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setAttribute(Qt.WA_TranslucentBackground); self.setFixedSize(800,800)
+
+        container = QWidget(self); container.setGeometry(0,0,800,800)
+        container.setStyleSheet("background-color:white; border-radius:15px;")
+        shadow = QGraphicsDropShadowEffect(self); shadow.setBlurRadius(30); shadow.setColor(QColor(0,0,0,100))
+        self.setGraphicsEffect(shadow)
+
+        self.title_bar = TitleBar(self); self.title_bar.setParent(container); self.title_bar.setGeometry(0,0,800,50)
+
+        lay = QVBoxLayout(container); lay.setContentsMargins(20,60,20,20); lay.setSpacing(20)
+
+        self.progress = ProgressSection("7. Train"); lay.addWidget(self.progress)
+
+        out_g = QGroupBox("8. Output folder"); out_g.setStyleSheet(
+            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
+            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
+        )
+        row = QHBoxLayout()
+        self.out_label = QLabel("")
+        self.out_label.setStyleSheet("font-size:13px;")
+        self.open_btn = QPushButton("Open folder"); self.open_btn.setFixedSize(110,32); self.open_btn.setStyleSheet(BUTTON_STYLE)
+        self.open_btn.clicked.connect(self._open_output_folder)
+        row.addWidget(self.out_label); row.addStretch(); row.addWidget(self.open_btn); out_g.setLayout(row)
+        lay.addWidget(out_g)
+
+        self.infer = InferenceSection(); lay.addWidget(self.infer)
+        self.infer.browse_btn.clicked.connect(self._browse_infer_file)
+        self.infer.start_btn.clicked.connect(self._start_inference)
+
+        res_g = QGroupBox("10. Result"); res_g.setStyleSheet(
+            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
+            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
+        )
+        self.result = ResultView()
+        rg_lay = QVBoxLayout(res_g); rg_lay.addWidget(self.result)
+        lay.addWidget(res_g)
+
+        btn_row = QHBoxLayout()
+        self.next_btn = QPushButton("Next"); self.next_btn.setFixedSize(110,38); self.next_btn.setStyleSheet(BUTTON_STYLE)
+        self.next_btn.clicked.connect(self._go_next); self.next_btn.setEnabled(False)
+        btn_row.addStretch(); btn_row.addWidget(self.next_btn); lay.addLayout(btn_row)
+
+    # ------------ Train/Test split + Train + Eval ------------
     def _run_kmeans_and_train(self):
+        # 저장 루트(쓰기 가능) 확보
+        output_base = _resolve_output_root(self.output_root)
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_root = os.path.join(DEFAULT_OUTPUT_ROOT, ts)
+        save_root = os.path.join(output_base, ts)
         os.makedirs(save_root, exist_ok=True)
         self._last_save_root = save_root
 
@@ -370,11 +495,14 @@ class SubWindow(QWidget):
         for i, item in enumerate(self.selection, start=1):
             dir_path = item["dir"]; label = str(item["label"])
             X, srcs = load_images_from_dir(dir_path)
+            # 로깅: 라벨-디렉터리 매핑 및 수량
+            self._info(f"[{i}] label='{label}' dir='{dir_path}' → images={len(srcs)}")
+
             if len(srcs) == 0:
                 self.progress.update(int(i/total*100)); continue
 
             k = min(self.samples_per_class, len(srcs))
-            chosen_idx  = list(range(k))
+            chosen_idx  = list(range(k))   # (참고) 실제 K-means 미적용: 앞 k장 선택
             chosen_set  = set(chosen_idx)
 
             dst_train_label = os.path.join(train_root, label)
@@ -402,12 +530,13 @@ class SubWindow(QWidget):
                 except Exception:
                     pass
 
+            self._info(f"    → train {k} / test {len(srcs)-k}")
             self.progress.update(int(i/total*100))
 
         self.progress.update(100)
 
         self.result.clear()
-        self._ok("K‑means selection completed.")
+        self._ok("K-means selection completed.")
         self._info("Training dataset prepared at <code>datasets/train/</code>.")
         if self._test_items:
             self._info("Test dataset prepared at <code>datasets/test/</code>.")
@@ -415,6 +544,7 @@ class SubWindow(QWidget):
             self._hint("No test images were available; accuracy cannot be computed.")
         self.result.add_hr()
 
+        # --- Train ---
         try:
             self._info("Training on datasets/train …")
             self.model.fit_from_root(self._train_dir)
@@ -425,11 +555,12 @@ class SubWindow(QWidget):
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
             return
 
+        # --- Eval on test ---
         try:
             if self._test_items:
                 correct, total = 0, 0
                 for p, true_lab in self._test_items:
-                    vec = vectorize_like_training(p)
+                    vec = vectorize_like_training(p)  # ← 공통 전처리로 통일
                     if vec is None:
                         continue
                     pred_lab = self.model.predict(vec, top_k=1)[0][0]
@@ -472,7 +603,7 @@ class SubWindow(QWidget):
             is_training = self._is_training_file(rp)
             if INFER_ONLY_FROM_TEST:
                 test_root = os.path.realpath(self._test_dir) if self._test_dir else ""
-                in_test_root = bool(test_root and os.path.commonpath([rp, test_root]) == test_root)
+                in_test_root = bool(test_root and self._is_subpath(rp, test_root))
                 if in_test_root and not is_training:
                     self.infer.file_input.setText(file_path); return
                 if not in_test_root:
@@ -505,7 +636,7 @@ class SubWindow(QWidget):
                 self._err("No trained model. Run train first."); return
 
         try:
-            vec = preprocess_user_image(image_path)
+            vec = preprocess_user_image(image_path)  # ← 공통 전처리
             top_labels, top_dists = self.model.predict(vec, top_k=3)
             img_name = os.path.basename(image_path)
             pred = top_labels[0]
@@ -516,12 +647,22 @@ class SubWindow(QWidget):
             self.result.add_block(f"Input: <code>{img_name}</code>")
             self.result.add_block(f"Prediction: <span class='pred'>{pred}</span>")
 
+            # 개별 추론 정오 즉시 표시 (datasets/test/<label>/... 에서 선택한 경우)
+            test_root = os.path.realpath(self._test_dir) if self._test_dir else ""
+            rp = os.path.realpath(image_path)
+            if test_root and self._is_subpath(rp, test_root):
+                gt = os.path.basename(os.path.dirname(rp))  # 폴더명이 정답 라벨
+                ok = (pred == gt)
+                self.result.add_block(
+                    f"Ground truth: <b>{gt}</b> → {'✅ Correct' if ok else '❌ Wrong'}"
+                )
+
             rows = "".join(
                 f"<tr><td>{i}</td><td>{lab}</td><td>{dist:.3f}</td></tr>"
                 for i, (lab, dist) in enumerate(zip(top_labels, top_dists), start=1)
             )
             self.result.add_block(
-                f"<div class='dim' style='font-weight:600;margin-top:4px;margin-bottom:2px;'>Top‑{len(top_labels)} nearest</div>"
+                f"<div class='dim' style='font-weight:600;margin-top:4px;margin-bottom:2px;'>Top-{len(top_labels)} nearest</div>"
                 f"<table class='grid'>"
                 f"<tr><th>Rank</th><th>Label</th><th>Distance</th></tr>{rows}</table>"
             )
@@ -545,6 +686,11 @@ class SubWindow(QWidget):
             pass
 
     def _go_next(self):
+        """
+        ★ 변경 포인트: 이전 창 스냅샷 대신 '흰색 오버레이'로 페이드아웃
+        → 새 창(ExperimentWindow) 위에 백색 위젯을 덮고 서서히 투명하게 만들어
+           이전 화면 텍스트가 비칠 여지를 없앰.
+        """
         try:
             from custom_4 import ExperimentWindow as Window4
         except Exception as e:
@@ -554,23 +700,35 @@ class SubWindow(QWidget):
 
         try:
             win4 = Window4(num_categories=getattr(self, "num_categories", 0))
-            try: win4.setGeometry(self.geometry())
-            except Exception: win4.move(self.pos())
+            try:
+                win4.setGeometry(self.geometry())
+            except Exception:
+                win4.move(self.pos())
             win4.show(); win4.raise_(); win4.activateWindow()
 
-            snap = self.grab()
-            overlay = QLabel(win4); overlay.setPixmap(snap)
-            overlay.setGeometry(0,0,self.width(), self.height())
+            # ── 흰색 오버레이(스냅샷 사용 안 함) ─────────────────────────────
+            overlay = QWidget(win4)
+            overlay.setStyleSheet("background:#ffffff;")  # 완전 흰색
+            overlay.setGeometry(win4.rect())             # 새 창 전체 덮기
             overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
             overlay.raise_(); overlay.show()
 
             eff = QGraphicsOpacityEffect(overlay); overlay.setGraphicsEffect(eff)
             anim = QPropertyAnimation(eff, b"opacity", self)
-            anim.setDuration(180); anim.setStartValue(1.0); anim.setEndValue(0.0)
+            anim.setDuration(180)                         # 필요시 0~300 범위로 조절
+            anim.setStartValue(1.0)
+            anim.setEndValue(0.0)
             anim.setEasingCurve(QEasingCurve.InOutQuad)
 
-            def _done(): overlay.deleteLater(); self.hide()
-            self._overlay_anim = anim; anim.finished.connect(_done); anim.start()
+            def _done():
+                overlay.deleteLater()
+                self.hide()  # 이전 창 감추기
+
+            self._overlay_anim = anim
+            anim.finished.connect(_done)
+            anim.start()
+            # ────────────────────────────────────────────────────────────────
+
         except Exception as e:
             self._err(f"Failed to open next window: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")

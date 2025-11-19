@@ -1,22 +1,47 @@
 import sys, os, subprocess
 from functools import partial
 
+def resource_path(name: str) -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
+
+    # 1) PyInstaller onefile 실행
+    if hasattr(sys, "_MEIPASS"):
+        base = sys._MEIPASS
+        candidates += [
+            os.path.join(base, name),          # ;.
+            os.path.join(base, "main", name),  # ;main
+        ]
+
+    # 2) 개발 환경
+    candidates += [
+        os.path.join(here, name),
+        os.path.join(here, "main", name),
+    ]
+
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+
+    return candidates[0]  # fallback
+
 ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH = os.path.join(ASSETS_DIR, "intellino_TM_transparent.png")
-HOME_ICON_PATH = os.path.join(ASSETS_DIR, "home.png")
+LOGO_PATH = resource_path("intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("home.png")
+
 MESSAGE_BOX_QSS = """
-* {
+QMessageBox {
     font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
                  'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
     font-weight: 500;
-    font-size: 13px;
+    font-size: 14px;
 }
 """
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea,
-    QMessageBox, QSizePolicy, QGraphicsOpacityEffect, QLabel
+    QMessageBox, QSizePolicy, QGraphicsOpacityEffect
 )
 from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
 from PySide2.QtCore import Qt, QSize, Signal, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
@@ -24,14 +49,14 @@ from custom_3 import SubWindow as Window3
 from path_utils import get_dirs
 
 # ---------------------------------------------------------------------
-GLOBAL_FONT_QSS_FALLBACK = """
-* {
-    font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
-                 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
-    font-weight: 500;
-    font-size: 13px;
-}
-"""
+#GLOBAL_FONT_QSS_FALLBACK = """
+#* {
+#    font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
+#                 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+#    font-weight: 500;
+#    font-size: 14px;
+#}
+#"""
 GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
     QGroupBox {
         border: 1px solid #b0b0b0;
@@ -45,8 +70,8 @@ GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
         subcontrol-position: top left;
         padding: 0 5px;
         background-color: white;
-        font-weight: 600;
-        font-size: 13px;
+        font-weight: 500;
+        font-size: 14px;
         color: #000000;
     }
 """
@@ -62,24 +87,40 @@ BUTTON_STYLE = """
         border-radius: 10px;
         padding: 5px;
         font-weight: bold;
-        font-size: 13px;
+        font-size: 14px;
     }
     QPushButton:hover { background-color: #e9ecef; }
     QPushButton:pressed { background-color: #adb5bd; color: white; }
 """
 
 
+# 경로 정규화/비교 유틸 ----------------------------------------------------
+def _canon_path(p: str) -> str:
+    """realpath + abspath + 대소문자까지 통일해서 비교용 문자열 생성"""
+    try:
+        return os.path.normcase(os.path.realpath(os.path.abspath(p)))
+    except Exception:
+        return os.path.normcase(os.path.abspath(p))
+
+
+def _same_dir(a: str, b: str) -> bool:
+    """가능하면 samefile, 아니면 정규화 문자열로 비교"""
+    try:
+        return os.path.samefile(a, b)
+    except Exception:
+        return _canon_path(a) == _canon_path(b)
+# ---------------------------------------------------------------------
 class TrainDatasetGroup(QGroupBox):
     completeness_changed = Signal(bool)
 
     def __init__(self, num_categories=3, base_dir=BASE_NUMBER_DIR, required_per_class=1):
-        super().__init__("5. Training datasets of each category")
+        super().__init__("6. Training datasets of each category")
 
         try:
             from custom_1 import GROUPBOX_WITH_FLOATING_TITLE as GB_STYLE
         except Exception:
             GB_STYLE = GROUPBOX_WITH_FLOATING_TITLE_FALLBACK
-        
+
         self.setObjectName("TrainDSGroup")
         self.setStyleSheet(GB_STYLE + """
             QGroupBox#TrainDSGroup::title {
@@ -88,7 +129,10 @@ class TrainDatasetGroup(QGroupBox):
             }
         """)
 
-        self.base_dir = base_dir
+        # 기준 경로(정규화)
+        self.base_dir = os.path.abspath(base_dir)
+        self._base_dir_canon = _canon_path(self.base_dir)
+
         self.required_per_class = max(1, int(required_per_class))
 
         self.category_inputs = []   # (dir_input, label_input)
@@ -127,7 +171,7 @@ class TrainDatasetGroup(QGroupBox):
 
             label = QLabel(f"Category {i}")
             label.setFixedWidth(80)
-            label.setStyleSheet("font-size: 13px;")
+            #label.setStyleSheet("font-size: 13px;")
 
             dir_input = QLineEdit()
             dir_input.setPlaceholderText("Select folder")
@@ -218,16 +262,23 @@ class TrainDatasetGroup(QGroupBox):
         cl.setStyleSheet(self._badge_style(n))
 
     def browse_number_folder(self, dir_input):
+        # DontResolveSymlinks 제거: 경로 표현을 최대한 단일화
         path = QFileDialog.getExistingDirectory(
-            self, "Select number folder (0~9)", self.base_dir,
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+            self,
+            "Select number folder (0~9)",
+            self.base_dir,
+            QFileDialog.ShowDirsOnly
         )
         if not path:
             return
+
         base = os.path.basename(os.path.normpath(path))
         parent = os.path.dirname(os.path.normpath(path))
 
-        if base.isdigit() and len(base) == 1 and os.path.normpath(parent).lower() == os.path.normpath(self.base_dir).lower():
+        base_ok = base.isdigit() and len(base) == 1
+        parent_ok = _same_dir(parent, self.base_dir)
+
+        if base_ok and parent_ok:
             dir_input.setText(path)
             try:
                 n = sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
@@ -260,10 +311,13 @@ class TrainDatasetGroup(QGroupBox):
                 return False
             if not os.path.isdir(d):
                 return False
+
             base = os.path.basename(os.path.normpath(d))
+            parent = os.path.dirname(os.path.normpath(d))
+
             if not (base.isdigit() and len(base) == 1):
                 return False
-            if os.path.normpath(os.path.dirname(d)).lower() != os.path.normpath(self.base_dir).lower():
+            if not _same_dir(parent, self.base_dir):
                 return False
             try:
                 n = sum(1 for f in os.listdir(d) if str(f).lower().endswith(IMG_EXTS))
@@ -307,27 +361,11 @@ class Custom_2_Window(QWidget):
         self._orig_app_qss = ""
         self._setup_ui()
 
-    def _apply_global_font(self):
-        app = QApplication.instance()
-        if not app:
-            return
-        self._orig_app_qss = app.styleSheet() or ""
-        try:
-            from custom_1 import GLOBAL_FONT_QSS
-        except Exception:
-            GLOBAL_FONT_QSS = GLOBAL_FONT_QSS_FALLBACK
-        app.setStyleSheet(self._orig_app_qss + ("\n" + GLOBAL_FONT_QSS if GLOBAL_FONT_QSS else ""))
-
-    def _restore_global_font(self):
-        app = QApplication.instance()
-        if app is not None:
-            app.setStyleSheet(self._orig_app_qss)
-
     def _setup_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
-        self._apply_global_font()
+        #self._apply_global_font()
         self.setFixedSize(800, 800)
 
         container = QWidget(self)
@@ -368,21 +406,27 @@ class Custom_2_Window(QWidget):
         h = QHBoxLayout(bar); h.setContentsMargins(15,0,15,0)
 
         logo = QLabel()
-        logo.setPixmap(QPixmap(LOGO_PATH).scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        pm = QPixmap(LOGO_PATH)
+        if pm.isNull():
+            logo.setText("intellino")
+            logo.setStyleSheet("font-weight:600; font-size:18px; color:#333;")
+        else:
+            logo.setPixmap(pm.scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
         close_btn = QPushButton()
         close_btn.setIcon(QIcon(HOME_ICON_PATH))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34,34)
         close_btn.setStyleSheet("QPushButton{border:none;background:transparent;} QPushButton:hover{background:#dee2e6;border-radius:17px;}")
-        close_btn.clicked.connect(self.close)
+        #close_btn.clicked.connect(self.close)
         h.addWidget(logo); h.addStretch(); h.addWidget(close_btn)
 
         bar.mousePressEvent = self.mousePressEvent
         bar.mouseMoveEvent  = self.mouseMoveEvent
 
         def _go_home():
-            self._restore_global_font()
+            if self.prev_window:
+                self.prev_window.show()
             self.close()
 
         close_btn.clicked.connect(_go_home)
@@ -463,7 +507,7 @@ class Custom_2_Window(QWidget):
         self.close()
 
     def closeEvent(self, e):
-        self._restore_global_font()
+        #self._restore_global_font()
         super().closeEvent(e)
 
     def mousePressEvent(self, e):
@@ -471,6 +515,7 @@ class Custom_2_Window(QWidget):
     def mouseMoveEvent(self, e):
         if hasattr(self, 'offset') and e.buttons() == Qt.LeftButton:
             self.move(self.pos() + e.pos() - self.offset)
+
 
 def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
     window = Custom_2_Window(
