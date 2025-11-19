@@ -4,10 +4,18 @@ from pathlib import Path
 
 from PySide2.QtGui import QPixmap
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget
-from ui_mainwindow import Ui_MainWindow  # GUI main window 
-from existing_mode_window import SubWindow   # easymode window
-from custom_1 import Custom_1_Window         # custom_1 window
+from ui_mainwindow import Ui_MainWindow                 # GUI main window 
+from existing_mode_window import SubWindow              # easymode window
+from custom_1 import Custom_1_Window                    # custom_1 window
 
+GLOBAL_FONT_QSS = """
+* {
+    font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
+                 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+}
+"""
 
 def resource_path(relative_path: str) -> str:
     """
@@ -68,6 +76,10 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    # ★ 모든 창에 동일 폰트 적용: 여기서 단 한 번만!
+    app.setStyleSheet(GLOBAL_FONT_QSS)
+
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())

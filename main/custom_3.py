@@ -277,8 +277,8 @@ class TitleBar(QWidget):
         self._offset = None
 
     def _on_home(self):
-        app = QApplication.instance()
-        if app: app.setStyleSheet("")
+        #app = QApplication.instance()
+        #if app: app.setStyleSheet("")
         if self._parent: self._parent.close()
 
     def mousePressEvent(self, e: QMouseEvent):
@@ -290,7 +290,7 @@ class TitleBar(QWidget):
         self._offset = None
 
 class ProgressSection(QWidget):
-    def __init__(self, title="6. Train"):
+    def __init__(self, title="7. Train"):
         super().__init__()
         g = QGroupBox(title); g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
@@ -341,7 +341,7 @@ class ResultView(QTextBrowser):
 class InferenceSection(QWidget):
     def __init__(self):
         super().__init__()
-        title = "8. Inference" if not INFER_ONLY_FROM_TEST else "8. Inference (use datasets/test)"
+        title = "9. Inference" if not INFER_ONLY_FROM_TEST else "8. Inference (use datasets/test)"
         g = QGroupBox(title); g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
             "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
@@ -436,9 +436,9 @@ class SubWindow(QWidget):
 
         lay = QVBoxLayout(container); lay.setContentsMargins(20,60,20,20); lay.setSpacing(20)
 
-        self.progress = ProgressSection("6. Train"); lay.addWidget(self.progress)
+        self.progress = ProgressSection("7. Train"); lay.addWidget(self.progress)
 
-        out_g = QGroupBox("7. Output folder"); out_g.setStyleSheet(
+        out_g = QGroupBox("8. Output folder"); out_g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
             "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
         )
@@ -454,7 +454,7 @@ class SubWindow(QWidget):
         self.infer.browse_btn.clicked.connect(self._browse_infer_file)
         self.infer.start_btn.clicked.connect(self._start_inference)
 
-        res_g = QGroupBox("9. Result"); res_g.setStyleSheet(
+        res_g = QGroupBox("10. Result"); res_g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
             "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
         )

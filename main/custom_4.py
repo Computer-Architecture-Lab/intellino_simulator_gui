@@ -119,9 +119,9 @@ class TitleBar(QWidget):
         self._offset = None
 
     def _on_home_clicked(self):
-        app = QApplication.instance()
-        if app:
-            app.setStyleSheet("")
+        #app = QApplication.instance()
+        #if app:
+        #    app.setStyleSheet("")
         if self._parent:
             self._parent.close()
 
@@ -222,6 +222,8 @@ class AccuracyCanvas(FigureCanvas):
             if acc > 0:
                 self.ax.text(xi, acc + 1, f"{acc:.1f}%", ha='center', va='bottom', fontsize=9)
 
+        self.figure.subplots_adjust(bottom=0.32)
+
         self.draw_idle()
 
 
@@ -230,7 +232,7 @@ class ExperimentGraphSection(QWidget):
     def __init__(self):
         super().__init__()
 
-        group = QGroupBox("9. Experiment graph")
+        group = QGroupBox("11. Experiment graph")
         group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold; font-size: 14px;
@@ -254,8 +256,9 @@ class ExperimentGraphSection(QWidget):
         # ✅ 백플레이트(완전 흰색) 위에 캔버스를 얹고, 섀도우는 백플레이트에만 적용
         self.backplate = QWidget()
         self.backplate.setStyleSheet("background-color: white; border-radius: 8px;")
+        self.backplate.setMinimumHeight(520)
         bp_layout = QVBoxLayout(self.backplate)
-        bp_layout.setContentsMargins(12, 12, 12, 12)  # 캔버스와 가장자리 간격
+        bp_layout.setContentsMargins(12, 12, 12, 80)  # 캔버스와 가장자리 간격
         bp_layout.setSpacing(0)
 
         self.canvas = AccuracyCanvas()
@@ -362,17 +365,17 @@ class ExperimentWindow(QWidget):
         super().showEvent(e)
 
     def _open_reconfigure(self):
-        # 5회 도달 시 재설정 금지, 홈으로만
+        # 5회 도달 시 재설정 금지
         if EXPERIMENT_STATE.is_full():
             self.close()
             return
 
-        from custom_1 import Custom_1_Window, GLOBAL_FONT_QSS
+        # 🔥 지연 import: 순환 import 방지
+        import custom_1
+        Custom_1_Window = custom_1.Custom_1_Window
+
+        # 여기서 스타일 다시 안 건드려도 됨 (GLOBAL_FONT_QSS 필요 X)
         self._custom1_window = Custom_1_Window(prev_window=self)
-        try:
-            self._custom1_window.setStyleSheet(GLOBAL_FONT_QSS)
-        except Exception:
-            pass
 
         self._custom1_window.show()
         self.hide()

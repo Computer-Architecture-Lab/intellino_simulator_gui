@@ -46,14 +46,6 @@ SECOND_STYLE_FIXED_HEIGHT = 160
 
 # -----------------------------
 # 전역 글꼴(사진 느낌: 산세리프, Medium)
-GLOBAL_FONT_QSS = """
-* {
-    font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
-                 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
-    font-weight: 500;
-    font-size: 13px;
-}
-"""
 
 # 공통 버튼 스타일
 BUTTON_STYLE = """
@@ -62,8 +54,6 @@ BUTTON_STYLE = """
         border: 1px solid #ccc;
         border-radius: 10px;
         padding: 5px;
-        font-weight: 600;
-        font-size: 13px;
     }
     QPushButton:hover { background-color: #e9ecef; }
     QPushButton:pressed { background-color: #adb5bd; color: white; }
@@ -76,8 +66,6 @@ TOGGLE_BUTTON_STYLE = """
         border: 1px solid #C9C9C9;
         border-radius: 10px;
         padding: 6px 14px;
-        font-weight: 600;
-        font-size: 13px;
     }
     QPushButton:hover { background-color: #F2F4F6; }
     QPushButton:checked {
@@ -102,8 +90,6 @@ GROUPBOX_WITH_FLOATING_TITLE = """
         subcontrol-position: top left;
         padding: 0 5px;
         background-color: white;
-        font-weight: 600;
-        font-size: 13px;
         color: #000000;
     }
 """
@@ -191,7 +177,7 @@ class IntegerInputGroup(QGroupBox):
                 padding: 5px 10px;
                 border: 1px solid #ccc;
                 border-radius: 8px;
-                font-size: 13px;
+                
             }
         """)
 
@@ -324,7 +310,7 @@ class MemorySizeSection(QGroupBox):
                 border-bottom-right-radius: 8px;
                 padding: 8px;
                 background-color: #f8f9fa;
-                font-size: 13px;
+                
             }
         """)
         self.output_box.setFixedHeight(SECOND_STYLE_FIXED_HEIGHT)
@@ -412,8 +398,7 @@ class Custom_1_Window(QWidget):
         self.next_btn.setFixedSize(100, 40)
         self.next_btn.setStyleSheet("""
             QPushButton {
-                font-weight: 600;
-                font-size: 14px;
+                
                 border: 1px solid #888;
                 border-radius: 8px;
                 background-color: #fefefe;
@@ -489,7 +474,7 @@ class Custom_1_Window(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setStyleSheet(GLOBAL_FONT_QSS)
+    #app.setStyleSheet(GLOBAL_FONT_QSS)
 
     window = Custom_1_Window()
     window.show()
