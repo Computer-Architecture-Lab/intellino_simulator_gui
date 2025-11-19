@@ -2,7 +2,7 @@ import sys
 import os
 from pathlib import Path
 
-from PySide2.QtGui import QPixmap
+from PySide2.QtGui import QPixmap, QIcon
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget
 from ui_mainwindow import Ui_MainWindow                 # GUI main window 
 from existing_mode_window import SubWindow              # easymode window
@@ -76,6 +76,9 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    icon_path = resource_path("icore_image.ico")
+    app.setWindowIcon(QIcon(icon_path))
 
     # ★ 모든 창에 동일 폰트 적용: 여기서 단 한 번만!
     app.setStyleSheet(GLOBAL_FONT_QSS)

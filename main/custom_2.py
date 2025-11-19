@@ -1,3 +1,4 @@
+# custom_2.py
 import sys, os, subprocess
 from functools import partial
 
@@ -5,7 +6,7 @@ def resource_path(name: str) -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     candidates = []
 
-    # 1) PyInstaller onefile 실행
+    # 1) PyInstaller onefile 실행 시
     if hasattr(sys, "_MEIPASS"):
         base = sys._MEIPASS
         candidates += [
@@ -41,22 +42,14 @@ QMessageBox {
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea,
-    QMessageBox, QSizePolicy, QGraphicsOpacityEffect
+    QMessageBox, QSizePolicy
 )
 from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
-from PySide2.QtCore import Qt, QSize, Signal, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+from PySide2.QtCore import Qt, QSize, Signal
 from custom_3 import SubWindow as Window3
 from path_utils import get_dirs
 
 # ---------------------------------------------------------------------
-#GLOBAL_FONT_QSS_FALLBACK = """
-#* {
-#    font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
-#                 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
-#    font-weight: 500;
-#    font-size: 14px;
-#}
-#"""
 GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
     QGroupBox {
         border: 1px solid #b0b0b0;
@@ -69,7 +62,6 @@ GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
         subcontrol-origin: margin;
         subcontrol-position: top left;
         padding: 0 5px;
-        background-color: white;
         font-weight: 500;
         font-size: 14px;
         color: #000000;
@@ -110,7 +102,15 @@ def _same_dir(a: str, b: str) -> bool:
     except Exception:
         return _canon_path(a) == _canon_path(b)
 # ---------------------------------------------------------------------
+
+
 class TrainDatasetGroup(QGroupBox):
+    """
+    6. Training datasets of each category
+
+    - 각 카테고리별로 '로컬 임의 폴더'를 선택할 수 있도록 제한을 풀었습니다.
+    - 조건: 폴더 존재 + 이미지 개수 >= required_per_class + 라벨 텍스트 존재
+    """
     completeness_changed = Signal(bool)
 
     def __init__(self, num_categories=3, base_dir=BASE_NUMBER_DIR, required_per_class=1):
@@ -129,7 +129,7 @@ class TrainDatasetGroup(QGroupBox):
             }
         """)
 
-        # 기준 경로(정규화)
+        # 기준 경로(기본 시작 위치로만 사용)
         self.base_dir = os.path.abspath(base_dir)
         self._base_dir_canon = _canon_path(self.base_dir)
 
@@ -171,10 +171,9 @@ class TrainDatasetGroup(QGroupBox):
 
             label = QLabel(f"Category {i}")
             label.setFixedWidth(80)
-            #label.setStyleSheet("font-size: 13px;")
 
             dir_input = QLineEdit()
-            dir_input.setPlaceholderText("Select folder")
+            dir_input.setPlaceholderText("Select folder (any local folder)")
             dir_input.setFixedHeight(ROW_EDIT_H)
             dir_input.setStyleSheet("""
                 QLineEdit { border: 1px solid #ccc; border-radius: 8px; padding-left: 10px; font-size: 13px; }
@@ -187,7 +186,8 @@ class TrainDatasetGroup(QGroupBox):
                 QPushButton { border: 1px solid #ccc; border-radius: 8px; background-color: #ffffff; font-weight: bold; }
                 QPushButton:hover { background-color: #e9ecef; }
             """)
-            browse_btn.clicked.connect(partial(self.browse_number_folder, dir_input))
+            # ❗️어디든 선택 가능
+            browse_btn.clicked.connect(partial(self.browse_any_folder, dir_input))
 
             count_badge = QLabel(f"0/{self.required_per_class}")
             count_badge.setFixedWidth(70)
@@ -261,49 +261,43 @@ class TrainDatasetGroup(QGroupBox):
         cl.setText(f"{n}/{self.required_per_class}")
         cl.setStyleSheet(self._badge_style(n))
 
-    def browse_number_folder(self, dir_input):
-        # DontResolveSymlinks 제거: 경로 표현을 최대한 단일화
+    def browse_any_folder(self, dir_input):
+        """로컬 디스크 어디든 폴더 선택 허용."""
+        start_dir = self.base_dir if os.path.isdir(self.base_dir) else os.path.expanduser("~")
         path = QFileDialog.getExistingDirectory(
             self,
-            "Select number folder (0~9)",
-            self.base_dir,
+            "Select folder (contains images)",
+            start_dir,
             QFileDialog.ShowDirsOnly
         )
         if not path:
             return
 
-        base = os.path.basename(os.path.normpath(path))
-        parent = os.path.dirname(os.path.normpath(path))
+        dir_input.setText(path)
 
-        base_ok = base.isdigit() and len(base) == 1
-        parent_ok = _same_dir(parent, self.base_dir)
-
-        if base_ok and parent_ok:
-            dir_input.setText(path)
-            try:
-                n = sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
-            except Exception:
-                n = 0
-            if n < self.required_per_class:
-                box = QMessageBox(self)
-                box.setWindowTitle("Not enough images")
-                box.setIcon(QMessageBox.Warning)
-                box.setText(
-                    f"This folder has {n} images (required {self.required_per_class}).\n"
-                    "Please add more images or select another folder."
-                )
-                box.setStyleSheet(MESSAGE_BOX_QSS)
-                box.exec_()
-        else:
-            QMessageBox.warning(
-                self,
-                "Invalid folder",
-                f"You can only select folders named 0–9 under 'main/custom_image/number_image'.\n\n"
-                f"Current selection: {path}\n"
-                f"Expected base path: {self.base_dir}"
+        # 이미지 개수 확인(부족하면 경고만)
+        try:
+            n = sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
+        except Exception:
+            n = 0
+        if n < self.required_per_class:
+            box = QMessageBox(self)
+            box.setWindowTitle("Not enough images")
+            box.setIcon(QMessageBox.Warning)
+            box.setText(
+                f"This folder has {n} images (required {self.required_per_class}).\n"
+                "Please add more images or select another folder."
             )
+            box.setStyleSheet(MESSAGE_BOX_QSS)
+            box.exec_()
 
     def is_complete(self) -> bool:
+        """
+        각 행:
+        - 디렉터리 존재
+        - 이미지 개수 >= required_per_class
+        - 라벨 텍스트 존재
+        """
         for row in self.row_widgets:
             d = row["dir_input"].text().strip()
             l = row["label_input"].text().strip()
@@ -312,13 +306,6 @@ class TrainDatasetGroup(QGroupBox):
             if not os.path.isdir(d):
                 return False
 
-            base = os.path.basename(os.path.normpath(d))
-            parent = os.path.dirname(os.path.normpath(d))
-
-            if not (base.isdigit() and len(base) == 1):
-                return False
-            if not _same_dir(parent, self.base_dir):
-                return False
             try:
                 n = sum(1 for f in os.listdir(d) if str(f).lower().endswith(IMG_EXTS))
             except Exception:
@@ -365,7 +352,6 @@ class Custom_2_Window(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
-        #self._apply_global_font()
         self.setFixedSize(800, 800)
 
         container = QWidget(self)
@@ -373,7 +359,9 @@ class Custom_2_Window(QWidget):
         container.setGeometry(0, 0, 800, 800)
 
         shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(30); shadow.setOffset(0, 0); shadow.setColor(QColor(0,0,0,120))
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 0)
+        shadow.setColor(QColor(0,0,0,120))
         container.setGraphicsEffect(shadow)
 
         self._add_title_bar(container)
@@ -401,9 +389,11 @@ class Custom_2_Window(QWidget):
         self.next_btn.setEnabled(self.dataset_group.is_complete())
 
     def _add_title_bar(self, parent):
-        bar = QWidget(parent); bar.setGeometry(0,0,800,50)
+        bar = QWidget(parent)
+        bar.setGeometry(0,0,800,50)
         bar.setStyleSheet("background-color:#f1f3f5; border-top-left-radius:15px; border-top-right-radius:15px;")
-        h = QHBoxLayout(bar); h.setContentsMargins(15,0,15,0)
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(15,0,15,0)
 
         logo = QLabel()
         pm = QPixmap(LOGO_PATH)
@@ -417,10 +407,15 @@ class Custom_2_Window(QWidget):
         close_btn.setIcon(QIcon(HOME_ICON_PATH))
         close_btn.setIconSize(QSize(24, 24))
         close_btn.setFixedSize(34,34)
-        close_btn.setStyleSheet("QPushButton{border:none;background:transparent;} QPushButton:hover{background:#dee2e6;border-radius:17px;}")
-        #close_btn.clicked.connect(self.close)
-        h.addWidget(logo); h.addStretch(); h.addWidget(close_btn)
+        close_btn.setStyleSheet(
+            "QPushButton{border:none;background:transparent;}"
+            "QPushButton:hover{background:#dee2e6;border-radius:17px;}"
+        )
+        h.addWidget(logo)
+        h.addStretch()
+        h.addWidget(close_btn)
 
+        # 드래그로 창 이동
         bar.mousePressEvent = self.mousePressEvent
         bar.mouseMoveEvent  = self.mouseMoveEvent
 
@@ -436,16 +431,27 @@ class Custom_2_Window(QWidget):
             QPushButton { font-weight:bold; font-size:14px; border:1px solid #888; border-radius:8px; background-color:#fefefe; }
             QPushButton:hover { background-color:#dee2e6; }
         """
-        self.back_btn = QPushButton("Back"); self.back_btn.setFixedSize(100,40); self.back_btn.setStyleSheet(btn_style)
+        self.back_btn = QPushButton("Back")
+        self.back_btn.setFixedSize(100,40)
+        self.back_btn.setStyleSheet(btn_style)
         self.back_btn.clicked.connect(self.go_back)
 
-        self.next_btn = QPushButton("Train Start"); self.next_btn.setFixedSize(100,40); self.next_btn.setStyleSheet(btn_style)
+        self.next_btn = QPushButton("Train Start")
+        self.next_btn.setFixedSize(100,40)
+        self.next_btn.setStyleSheet(btn_style)
         self.next_btn.clicked.connect(self.start_kmeans)
 
-        row = QHBoxLayout(); row.addWidget(self.back_btn); row.addStretch(); row.addWidget(self.next_btn)
+        row = QHBoxLayout()
+        row.addWidget(self.back_btn)
+        row.addStretch()
+        row.addWidget(self.next_btn)
         return row
 
     def start_kmeans(self):
+        """
+        Train Start 버튼 핸들러.
+        애니메이션 없이 다음 창(custom_3.SubWindow)로 전환만 수행합니다.
+        """
         if not self.dataset_group.is_complete():
             return
 
@@ -473,56 +479,52 @@ class Custom_2_Window(QWidget):
         self.win3.raise_()
         self.win3.activateWindow()
 
-        snap = self.grab()
-        overlay = QLabel(self.win3)
-        overlay.setPixmap(snap)
-        overlay.setGeometry(0, 0, self.width(), self.height())
-        overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        overlay.raise_()
-        overlay.show()
-
-        effect = QGraphicsOpacityEffect(overlay)
-        overlay.setGraphicsEffect(effect)
-
-        anim = QPropertyAnimation(effect, b"opacity", self)
-        anim.setDuration(180)
-        anim.setStartValue(1.0)
-        anim.setEndValue(0.0)
-        anim.setEasingCurve(QEasingCurve.InOutQuad)
-
-        def _done():
-            overlay.deleteLater()
-            self.hide()
-
-        self._overlay_anim = anim
-        anim.finished.connect(_done)
-        anim.start()
+        # ★ 스냅샷/페이드 애니 없이, 현재 창만 숨김
+        self.hide()
 
     def go_back(self):
         if self.prev_window is not None:
             try:
-                self.prev_window.show(); self.prev_window.raise_(); self.prev_window.activateWindow()
+                self.prev_window.show()
+                self.prev_window.raise_()
+                self.prev_window.activateWindow()
             except Exception:
                 pass
         self.close()
 
     def closeEvent(self, e):
-        #self._restore_global_font()
         super().closeEvent(e)
 
     def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton: self.offset = e.pos()
+        if e.button() == Qt.LeftButton:
+            self.offset = e.pos()
+
     def mouseMoveEvent(self, e):
         if hasattr(self, 'offset') and e.buttons() == Qt.LeftButton:
             self.move(self.pos() + e.pos() - self.offset)
 
 
+# ─────────────────────────────────────────────
+# custom_1에서 import 해서 사용하는 함수
+# ─────────────────────────────────────────────
 def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
+    """
+    custom_1에서 호출하는 진입 함수.
+    전달받은 파라미터로 Custom_2_Window를 띄워준다.
+    """
     window = Custom_2_Window(
         num_categories=num_categories,
         samples_per_class=samples_per_class,
         input_vector_length=input_vector_length,
         selected_mem_kb=selected_mem_kb,
-        prev_window=prev_window
+        prev_window=prev_window,
     )
     window.show()
+    return window
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    w = Custom_2_Window()
+    w.show()
+    sys.exit(app.exec_())

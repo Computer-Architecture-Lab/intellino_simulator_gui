@@ -6,6 +6,7 @@ from PySide2.QtWidgets import (
     QStyle,
 )
 from PySide2.QtCore import QPropertyAnimation, Qt, QSize
+    # QIntValidator 추가
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from custom_2 import launch_training_window
 
