@@ -15,9 +15,20 @@ from collections import defaultdict
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, "trained_neuron.pkl")
 
+def _get_model_dir():
+    # 우선순위: LOCALAPPDATA\iCore_mnist → 사용자 홈\iCore_mnist
+    localapp = os.environ.get("LOCALAPPDATA")
+    if localapp:
+        base = os.path.join(localapp, "iCore_mnist")
+    else:
+        base = os.path.join(os.path.expanduser("~"), "iCore_mnist")
+    os.makedirs(base, exist_ok=True)
+    return base
 
+MODEL_DIR = _get_model_dir()
+MODEL_PATH = os.path.join(MODEL_DIR, "trained_neuron.pkl")
+# MODEL_PATH = os.path.join(SCRIPT_DIR, "trained_neuron.pkl")
 
 
 #-----------------------------------intellino train--------------------------------#
@@ -25,12 +36,12 @@ MODEL_PATH = os.path.join(SCRIPT_DIR, "trained_neuron.pkl")
 
 number_of_neuron_cells = 1000
 length_of_input_vector = 784
-min_per_label = number_of_neuron_cells // 10
+min_per_label = (number_of_neuron_cells // 10) + 1
 
 resize_size = int(math.sqrt(length_of_input_vector))
-neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
-                           length_of_input_vector=length_of_input_vector,
-                           measure="manhattan")
+# neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
+#                            length_of_input_vector=length_of_input_vector,
+#                            measure="manhattan")
 
 transform = transforms.ToTensor()
 # dataset
@@ -38,9 +49,12 @@ train_mnist = datasets.MNIST('../mnist_data/', download=True, train=True)
 test_mnist = datasets.MNIST("../mnist_data/", download=True, train=False)
 
 
-def train():  
+def train(progress_cb=None, log_cb=None):  
     label_counts = defaultdict(int)
     train_num=0
+    neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
+                           length_of_input_vector=length_of_input_vector,
+                           measure="manhattan")
 
     for i, (data, label) in enumerate(train_mnist):
         if label_counts[label] >= min_per_label:
@@ -51,20 +65,36 @@ def train():
         opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
         opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
         resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
-        flatten_image = resized_image .reshape(1, -1).squeeze()
+        flatten_image = resized_image.reshape(1, -1).squeeze()
         is_finish = neuron_cells.train(vector=flatten_image, target=label)
 
         label_counts[label] += 1
 
         # 학습 진행률
         progress = int((train_num/number_of_neuron_cells)*100)
-        if train_num%(number_of_neuron_cells/25)==0:
-            print(f"progress : {progress}", flush=True)     # flush=True : 출력 내용을 바로 콘솔로 내보내게 함
+        if train_num % (number_of_neuron_cells/25) == 0:
+            # 콘솔용 출력 (기존 동작 유지)
+            # print(f"progress : {progress}", flush=True)
+            if log_cb is not None:
+                try:
+                    log_cb(f"progress : {progress}")
+                except Exception:
+                    pass
+            if progress_cb is not None:
+                try:
+                    progress_cb(progress)
+                except Exception:
+                    pass
             time.sleep(0.01)
 
         # 지금 is_finish가 True가 안됨... 누가 해결좀 해줘
-        if is_finish == True:
+        if is_finish is True:
             print("train finish")
+            if log_cb is not None:
+                try:
+                    log_cb("train finish")
+                except Exception:
+                    pass
             with open(MODEL_PATH, "wb") as f:
                 pickle.dump(neuron_cells, f)
             break
@@ -138,7 +168,24 @@ def preprocess_user_image(image_path):
 #
 #    return flatten_image
 
+def infer_image(image_path: str) -> int:
+    """
+    GUI에서 사용할 단일 이미지 추론용 함수.
+    - 모델이 없으면 RuntimeError 발생
+    - 성공하면 예측된 숫자 라벨(int) 반환
+    """
+    if not os.path.exists(MODEL_PATH):
+        raise RuntimeError("There is no learned model. Run learning first.")
 
+    with open(MODEL_PATH, "rb") as f:
+        neuron_cells_loaded = pickle.load(f)
+
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"File does not exist: {image_path}")
+
+    flatten_image = preprocess_user_image(image_path)
+    predict_label = neuron_cells_loaded.inference(vector=flatten_image)
+    return int(predict_label)
 
 def infer():
 
