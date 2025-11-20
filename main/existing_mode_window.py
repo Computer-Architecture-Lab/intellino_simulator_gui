@@ -2,6 +2,7 @@
 import sys
 import os
 import subprocess
+import traceback
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -9,7 +10,7 @@ from PySide2.QtWidgets import (
     QTextEdit, QSizePolicy, QStyle
 )
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
-from PySide2.QtCore import Qt, QSize, QTimer, Signal
+from PySide2.QtCore import Qt, QSize, QTimer, Signal, QThread
 
 # ──────────────────────────────────────────────
 # exe/개발 공통 리소스 경로 헬퍼
@@ -194,7 +195,7 @@ class InferenceSection(QWidget):
 
     def startFunction(self):
         file_path = self.file_input.text()
-        print(f"[DEBUG] Start button clicked, file = {file_path}")
+        # print(f"[DEBUG] Start button clicked, file = {file_path}")
         self.inference_requested.emit(file_path)
 
 
@@ -230,11 +231,51 @@ class ResultSection(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(result_group)
 
+class MnistTrainWorker(QThread):
+    progress = Signal(int)
+    log = Signal(str)
+    done = Signal()        # 성공적으로 끝났을 때
+    failed = Signal(str)   # 에러 발생 시
+
+    def run(self):
+        try:
+            import mnist
+
+            def progress_cb(p):
+                self.progress.emit(int(p))
+
+            def log_cb(msg):
+                self.log.emit(str(msg))
+
+            mnist.train(progress_cb=progress_cb, log_cb=log_cb)
+            self.done.emit()
+        except Exception:
+            self.failed.emit(traceback.format_exc())
+
+class MnistInferWorker(QThread):
+    finished = Signal(int)    # 예측 라벨
+    error = Signal(str)
+
+    def __init__(self, image_path: str, parent=None):
+        super().__init__(parent)
+        self.image_path = image_path
+
+    def run(self):
+        try:
+            import mnist
+            label = mnist.infer_image(self.image_path)
+            self.finished.emit(label)
+        except Exception:
+            self.error.emit(traceback.format_exc())
+
+
 
 # 메인 창
 class SubWindow(QWidget):
     def __init__(self):
         super().__init__()
+        self._mnist_train_worker = None
+        self._mnist_infer_worker = None
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)  # 테두리제거
         self.setAttribute(Qt.WA_TranslucentBackground)           # 창 배경에 투명 적용
         self.setFixedSize(800, 800)                              # 창 크기 고정
@@ -320,25 +361,31 @@ class SubWindow(QWidget):
 
     # run inference
     def run_inference(self, file_path):
-        print(f"[DEBUG] run_inference called with: {file_path}")
-        test_path = os.path.join(os.path.dirname(__file__), "mnist.py")  # 필요 시 resource_path("mnist.py")로 교체
-        self.infer_process = subprocess.Popen([sys.executable, test_path, "infer", file_path],
-                                              stdout=subprocess.PIPE,
-                                              stderr=subprocess.STDOUT,
-                                              universal_newlines=True,
-                                              bufsize=1)
-        self.result_section.result_text.clear()
-        self.infer_timer = QTimer()
-        self.infer_timer.timeout.connect(self.read_inference_output)
-        self.infer_timer.start(10)
+        file_path = file_path.strip()
+        if not file_path:
+            self.result_section.result_text.append("[INFO] 먼저 추론할 파일을 선택해주세요.")
+            return
 
-    def read_inference_output(self):
-        if self.infer_process.stdout:
-            line = self.infer_process.stdout.readline()
-            if line:
-                self.result_section.result_text.append(line.strip())
-            if self.infer_process.poll() is not None:
-                self.infer_timer.stop()
+        if self._mnist_infer_worker is not None and self._mnist_infer_worker.isRunning():
+            # 이미 추론 중이면 무시
+            return
+
+        # self.result_section.result_text.append(f"[DEBUG] Inference start: {file_path}")
+        self.result_section.result_text.append(f"Inference start")
+
+        worker = MnistInferWorker(file_path, parent=self)
+        worker.finished.connect(self._on_mnist_infer_finished)
+        worker.error.connect(self._on_mnist_infer_error)
+
+        self._mnist_infer_worker = worker
+        worker.start()
+
+    def _on_mnist_infer_finished(self, label: int):
+        self.result_section.result_text.append(f"Inference result: predict_label = {label}")
+
+    def _on_mnist_infer_error(self, msg: str):
+        self.result_section.result_text.append("[ERROR] Inference failed:")
+        self.result_section.result_text.append(msg)
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
@@ -350,15 +397,39 @@ class SubWindow(QWidget):
 
     # Dataset 버튼 핸들러
     def mnistFunction(self):
-        train_path = os.path.join(os.path.dirname(__file__), "mnist.py")  # 필요 시 resource_path("mnist.py")
-        self.process = subprocess.Popen([sys.executable, train_path],
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT,
-                                        universal_newlines=True,
-                                        bufsize=1)
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.check_progress_output)
-        self.timer.start(10)
+        # 이미 학습이 진행 중이면 중복 실행 방지
+        if self._mnist_train_worker is not None and self._mnist_train_worker.isRunning():
+            return
+
+        # 로그 영역 초기화 혹은 메시지 추가
+        self.result_section.result_text.append("Starting MNIST training...")
+        self.train_section.update_progress(0)
+
+        worker = MnistTrainWorker()
+        worker.progress.connect(self.train_section.update_progress)
+        # worker.log.connect(lambda msg: self.result_section.result_text.append(msg))
+        worker.finished.connect(self._on_mnist_train_finished)
+        worker.failed.connect(self._on_mnist_train_error)
+
+        self._mnist_train_worker = worker
+        worker.start()
+
+    def _on_mnist_train_finished(self):
+        self.result_section.result_text.append("MNIST training has been completed.")
+
+    def _on_mnist_train_error(self, msg: str):
+        self.result_section.result_text.append("[ERROR] MNIST 학습 중 오류 발생:")
+        self.result_section.result_text.append(msg)
+    # def mnistFunction(self):
+    #     train_path = os.path.join(os.path.dirname(__file__), "mnist.py")  # 필요 시 resource_path("mnist.py")
+    #     self.process = subprocess.Popen([sys.executable, train_path],
+    #                                     stdout=subprocess.PIPE,
+    #                                     stderr=subprocess.STDOUT,
+    #                                     universal_newlines=True,
+    #                                     bufsize=1)
+    #     self.timer = QTimer()
+    #     self.timer.timeout.connect(self.check_progress_output)
+    #     self.timer.start(10)
 
     # 필요 시 확장
     # def cifarFunction(self): pass

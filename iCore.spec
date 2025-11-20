@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files
 
-datas = [('main\\icore_image.ico', 'main'), ('main\\intellino_TM.png', 'main'), ('main\\intellino_TM_transparent.png', 'main'), ('main\\home.png', 'main'), ('main\\custom_image', 'main\\custom_image'), ('C:\\Users\\kjsle\\anaconda3\\envs\\Intellino_simulator\\Lib\\site-packages\\PySide2\\plugins\\imageformats', 'PySide2\\plugins\\imageformats')]
+datas = [('main\\icore_image.ico', 'main'), ('main\\intellino_TM.png', 'main'), ('main\\intellino_TM_transparent.png', 'main'), ('main\\home.png', 'main'), ('main\\custom_image', 'main\\custom_image'), ('C:\\Users\\kjsle\\anaconda3\\envs\\Intellino_simulator\\Library\\plugins\\imageformats', 'PySide2\\plugins\\imageformats')]
 datas += collect_data_files('matplotlib')
 
 
@@ -16,7 +16,7 @@ a = Analysis(['main\\main.py'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
-             excludes=['torch', 'torchvision', 'torchaudio', 'torch._C'],
+             excludes=[],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher,
