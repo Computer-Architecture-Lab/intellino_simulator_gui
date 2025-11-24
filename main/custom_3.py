@@ -1,10 +1,5 @@
 # custom_3.py — train/test split with accuracy + native file dialog
-# 변경 사항 요약:
-# 1) 전처리 통일: 학습(load), 평가(test), 추론(inference) 모두 preprocess_image() 하나만 사용
-# 2) 추론 결과 정오 표시: datasets/test/<label>/... 에서 고른 경우 GT(폴더명)와 비교하여 ✅/❌ 출력
-# 3) 경로 유틸 보강: exe/개발 공통 resource_path, 출력 루트 쓰기 가능 경로 자동 선택
-# 4) 학습 로그 강화: label ↔ dir 매핑 및 train/test 개수 로깅
-# 5) ★ 전환 애니메이션 수정: 이전 창 스냅샷 → 흰색 오버레이 페이드아웃(뒤 화면 비침 완전 차단)
+
 
 import sys, os, shutil, datetime, numpy as np, traceback, pickle, cv2
 from PIL import Image  # (남겨두지만 학습·평가·추론은 모두 OpenCV 기반 전처리 사용)
@@ -560,7 +555,7 @@ class SubWindow(QWidget):
             if self._test_items:
                 correct, total = 0, 0
                 for p, true_lab in self._test_items:
-                    vec = vectorize_like_training(p)  # ← 공통 전처리로 통일
+                    vec = vectorize_like_training(p)  # 공통 전처리로 통일
                     if vec is None:
                         continue
                     pred_lab = self.model.predict(vec, top_k=1)[0][0]
@@ -570,7 +565,7 @@ class SubWindow(QWidget):
                 if total > 0:
                     acc = 100.0 * correct / total
                     self._last_accuracy = float(acc)
-                    # ▶ 실험 상태에 누적
+                    # 실험 상태에 누적
                     EXPERIMENT_STATE.add_run(self._make_param_label(), float(acc))
 
                     self.result.add_block("<b>Test evaluation</b>")
@@ -636,7 +631,7 @@ class SubWindow(QWidget):
                 self._err("No trained model. Run train first."); return
 
         try:
-            vec = preprocess_user_image(image_path)  # ← 공통 전처리
+            vec = preprocess_user_image(image_path)  # 공통 전처리
             top_labels, top_dists = self.model.predict(vec, top_k=3)
             img_name = os.path.basename(image_path)
             pred = top_labels[0]
@@ -654,7 +649,7 @@ class SubWindow(QWidget):
                 gt = os.path.basename(os.path.dirname(rp))  # 폴더명이 정답 라벨
                 ok = (pred == gt)
                 self.result.add_block(
-                    f"Ground truth: <b>{gt}</b> → {'✅ Correct' if ok else '❌ Wrong'}"
+                    f"Ground truth: <b>{gt}</b> → {'Correct' if ok else 'Wrong'}"
                 )
 
             rows = "".join(

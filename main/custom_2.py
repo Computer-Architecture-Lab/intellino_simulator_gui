@@ -186,7 +186,7 @@ class TrainDatasetGroup(QGroupBox):
                 QPushButton { border: 1px solid #ccc; border-radius: 8px; background-color: #ffffff; font-weight: bold; }
                 QPushButton:hover { background-color: #e9ecef; }
             """)
-            # ❗️어디든 선택 가능
+            # 어디든 선택 가능
             browse_btn.clicked.connect(partial(self.browse_any_folder, dir_input))
 
             count_badge = QLabel(f"0/{self.required_per_class}")
@@ -479,7 +479,7 @@ class Custom_2_Window(QWidget):
         self.win3.raise_()
         self.win3.activateWindow()
 
-        # ★ 스냅샷/페이드 애니 없이, 현재 창만 숨김
+        # 스냅샷/페이드 애니 없이, 현재 창만 숨김
         self.hide()
 
     def go_back(self):

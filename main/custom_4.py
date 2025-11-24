@@ -142,7 +142,7 @@ class AccuracyCanvas(FigureCanvas):
     """
     - X축 슬롯: 항상 5칸 고정
     - 막대 색상/두께: 기존 유지
-    - ✅ 배경을 항상 완전 불투명(white)으로 강제
+    - 배경을 항상 완전 불투명(white)으로 강제
     """
     DEFAULT_BAR_WIDTH = 0.8
     BAR_WIDTH_SCALE   = 1.0 / 2.0
@@ -160,7 +160,7 @@ class AccuracyCanvas(FigureCanvas):
         self.setParent(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # ✅ Qt 위젯 배경을 완전 불투명 흰색으로 강제
+        # Qt 위젯 배경을 완전 불투명 흰색으로 강제
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAttribute(Qt.WA_OpaquePaintEvent, True)     # Qt가 투명 합성하지 않도록 힌트
         self.setAttribute(Qt.WA_TranslucentBackground, False)
@@ -178,7 +178,7 @@ class AccuracyCanvas(FigureCanvas):
     def _init_axes(self):
         self.ax.clear()
 
-        # ✅ Figure/Axes 모두 흰색·불투명 강제
+        # Figure/Axes 모두 흰색·불투명 강제
         self.figure.patch.set_facecolor('white')
         self.figure.patch.set_alpha(1.0)
         self.ax.set_facecolor('white')
@@ -189,7 +189,7 @@ class AccuracyCanvas(FigureCanvas):
         self.ax.set_xlabel("Parameters")
         self.ax.grid(True, axis='y', linestyle='--', alpha=0.3)
 
-    # ✅ 페인트 전에 전체 영역을 흰색으로 칠해 투명 채널/합성 제거
+    # 페인트 전에 전체 영역을 흰색으로 칠해 투명 채널/합성 제거
     def paintEvent(self, event):
         p = QPainter(self)
         p.fillRect(self.rect(), Qt.white)
@@ -239,7 +239,7 @@ class ExperimentGraphSection(QWidget):
                 border: 1px solid #a9a9a9;
                 border-radius: 12px;
                 margin-top: 10px;
-                /* ▶ 전체 패딩을 살짝 줄여 테두리 안으로 자연스럽게 */
+                /* 전체 패딩을 살짝 줄여 테두리 안으로 자연스럽게 */
                 padding: 14px;
             }
             QGroupBox::title {
@@ -253,7 +253,7 @@ class ExperimentGraphSection(QWidget):
         v.setContentsMargins(10, 10, 10, 16)
         v.setSpacing(8)
 
-        # ✅ 백플레이트(완전 흰색) 위에 캔버스를 얹고, 섀도우는 백플레이트에만 적용
+        # 백플레이트(완전 흰색) 위에 캔버스를 얹고, 섀도우는 백플레이트에만 적용
         self.backplate = QWidget()
         self.backplate.setStyleSheet("background-color: white; border-radius: 8px;")
         self.backplate.setMinimumHeight(520)
@@ -370,7 +370,7 @@ class ExperimentWindow(QWidget):
             self.close()
             return
 
-        # 🔥 지연 import: 순환 import 방지
+        # 지연 import: 순환 import 방지
         import custom_1
         Custom_1_Window = custom_1.Custom_1_Window
 

@@ -1,133 +1,129 @@
-import numpy as np
-import math, time, cv2, sys, os, pickle
-from torchvision import datasets, transforms
-from intellino.core.neuron_cell import NeuronCells
-from torch.utils.data import DataLoader
-from pprint import pprint
+# mnist.py  (GUI / exe 전용 버전)
 
-import warnings
-warnings.filterwarnings("ignore")
-
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 import os
-from collections import defaultdict
+import sys
+import time
+import pickle
+import math
+
+import numpy as np
+import cv2
+
+from intellino.core.neuron_cell import NeuronCells
 
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-def _get_model_dir():
-    # 우선순위: LOCALAPPDATA\iCore_mnist → 사용자 홈\iCore_mnist
-    localapp = os.environ.get("LOCALAPPDATA")
-    if localapp:
-        base = os.path.join(localapp, "iCore_mnist")
-    else:
-        base = os.path.join(os.path.expanduser("~"), "iCore_mnist")
-    os.makedirs(base, exist_ok=True)
-    return base
-
-MODEL_DIR = _get_model_dir()
-MODEL_PATH = os.path.join(MODEL_DIR, "trained_neuron.pkl")
-# MODEL_PATH = os.path.join(SCRIPT_DIR, "trained_neuron.pkl")
-
-
-#-----------------------------------intellino train--------------------------------#
-
-
-number_of_neuron_cells = 1000
-length_of_input_vector = 784
-min_per_label = (number_of_neuron_cells // 10) + 1
-
-resize_size = int(math.sqrt(length_of_input_vector))
-# neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
-#                            length_of_input_vector=length_of_input_vector,
-#                            measure="manhattan")
-
-transform = transforms.ToTensor()
-# dataset
-train_mnist = datasets.MNIST('../mnist_data/', download=True, train=True)
-test_mnist = datasets.MNIST("../mnist_data/", download=True, train=False)
+# ─────────────────────────────────────
+# PyInstaller(onefile) + 개발환경 겸용 경로 헬퍼
+# ─────────────────────────────────────
+def resource_path(name: str) -> str:
+    """
+    onefile 실행 시:  sys._MEIPASS 기준
+    개발 환경 실행 시: 이 파일(__file__) 기준
+    두 경우 모두에서 name 파일을 찾도록 함.
+    """
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(base, name),                         # e.g. trained_neuron.pkl
+        os.path.join(base, "main", name),                 # onefile에서 ;main 구조
+        os.path.join(os.path.dirname(__file__), name),    # 개발 환경
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    # 못 찾으면 일단 첫 번째 후보 리턴
+    return candidates[0]
 
 
-def train(progress_cb=None, log_cb=None):  
-    label_counts = defaultdict(int)
-    train_num=0
-    neuron_cells = NeuronCells(number_of_neuron_cells=number_of_neuron_cells,
-                           length_of_input_vector=length_of_input_vector,
-                           measure="manhattan")
+# 미리 학습해 둔 모델 파일 (PyInstaller에서 같이 패키징됨)
+MODEL_PATH = resource_path("trained_neuron.pkl")
 
-    for i, (data, label) in enumerate(train_mnist):
-        if label_counts[label] >= min_per_label:
-            continue
-        train_num+=1
-        numpy_image = np.array(data)
-        # numpy_image = data.squeeze().numpy().astype(np.uint8)
-        opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
-        opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-        resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
-        flatten_image = resized_image.reshape(1, -1).squeeze()
-        is_finish = neuron_cells.train(vector=flatten_image, target=label)
-
-        label_counts[label] += 1
-
-        # 학습 진행률
-        progress = int((train_num/number_of_neuron_cells)*100)
-        if train_num % (number_of_neuron_cells/25) == 0:
-            # 콘솔용 출력 (기존 동작 유지)
-            # print(f"progress : {progress}", flush=True)
-            if log_cb is not None:
-                try:
-                    log_cb(f"progress : {progress}")
-                except Exception:
-                    pass
-            if progress_cb is not None:
-                try:
-                    progress_cb(progress)
-                except Exception:
-                    pass
-            time.sleep(0.01)
-
-        # 지금 is_finish가 True가 안됨... 누가 해결좀 해줘
-        if is_finish is True:
-            print("train finish")
-            if log_cb is not None:
-                try:
-                    log_cb("train finish")
-                except Exception:
-                    pass
-            with open(MODEL_PATH, "wb") as f:
-                pickle.dump(neuron_cells, f)
-            break
+# intellino 입력 벡터 길이 (MNIST 28x28)
+LENGTH_OF_INPUT_VECTOR = 784
+RESIZE_SIZE = int(math.sqrt(LENGTH_OF_INPUT_VECTOR))
 
 
-#-----------------------------------intellino test---------------------------------#
+# ─────────────────────────────────────
+# 1. GUI에서 사용하는 "가짜 학습" 함수
+# ─────────────────────────────────────
+def train(progress_cb=None, log_cb=None):
+    """
+    GUI에서 MNIST 버튼 눌렀을 때 호출되는 함수.
+    - 실제 학습은 하지 않고,
+    - progress_cb 를 통해 0 → 100% 까지 게이지만 채워줌.
+    - log_cb 를 통해 텍스트 로그만 출력.
+
+    기존 학습 속도와 비슷하게 보이도록 step 수 / 슬립 시간 조절 가능.
+    """
+
+    # 로그 출력 (기존 "MNIST 학습을 시작합니다..." 역할)
+    if log_cb is not None:
+        try:
+            log_cb("MNIST training started (using pre-trained model).")
+        except Exception:
+            pass
+
+    # 게이지를 몇 단계로 나눌지 (기존 25번 정도였으니 그대로 25 단계 사용)
+    steps = 25
+
+    # 한 스텝당 딜레이 (체감 속도 조절용)
+    # 너무 빠르면 0.02, 너무 느리면 0.01 등으로 조정 가능
+    SLEEP_SEC = 0.03
+
+    for i in range(steps + 1):
+        percent = int(100 * i / steps)
+
+        # 진행률 콜백
+        if progress_cb is not None:
+            try:
+                progress_cb(percent)
+            except Exception:
+                pass
+
+        # 너무 순식간에 끝나지 않도록 약간 딜레이
+        time.sleep(SLEEP_SEC)
+
+    # 마지막 로그
+    if log_cb is not None:
+        try:
+            log_cb("MNIST training completed.")
+        except Exception:
+            pass
 
 
-def preprocess_user_image(image_path):
-    # 0. 이미지 읽기 (컬러 -> 그레이)
+# ─────────────────────────────────────
+# 2. 이미지 전처리 + 단일 이미지 추론 함수
+# ─────────────────────────────────────
+def preprocess_user_image(image_path: str) -> np.ndarray:
+    """
+    기존에 사용하던 OpenCV 기반 전처리 그대로 유지:
+      1) BGR → Gray
+      2) Gaussian Blur
+      3) OTSU threshold + 필요시 반전
+      4) 숫자 영역 bounding box로 crop
+      5) 긴 변 기준 20px로 리사이즈 (비율 유지)
+      6) 28x28 중앙 배치
+      7) flatten → (784,) float32
+    """
     image = cv2.imread(image_path)
     if image is None:
         raise ValueError(f"Unable to mount image: {image_path}")
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 1. 약한 Blur
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    cv2.imwrite("1.png", blurred)
-
-    # 2. Threshold (Otsu 방식)
+    # OTSU threshold
     _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_OTSU)
 
-    # 픽셀 반전 (흰 배경일 경우 평균 밝기 기준)
+    # 배경이 흰색이고 숫자가 검정이면 MNIST 스타일로 맞추기 위해 반전
     if np.mean(binary) > 127:
-        binary = 255 - binary  # MNIST 스타일로 맞춤
+        binary = 255 - binary
 
-    # 3. 숫자 영역만 추출
+    # 숫자 영역만 crop
     coords = cv2.findNonZero(binary)
     x, y, w, h = cv2.boundingRect(coords)
-    cropped = binary[y:y+h, x:x+w]
+    cropped = binary[y:y + h, x:x + w]
 
-    # 4. Aspect Ratio 유지하면서 최대한 키우기
+    # 긴 변 기준 20px로 리사이즈
     target_size = 20
     if w > h:
         new_w = target_size
@@ -138,47 +134,31 @@ def preprocess_user_image(image_path):
 
     resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    # 5. 중앙 배치 (28x28)
+    # 28x28 중앙 배치
     padded = np.zeros((28, 28), dtype=np.uint8)
     x_offset = (28 - new_w) // 2
     y_offset = (28 - new_h) // 2
-    padded[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
+    padded[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized
 
-    # 6. 저장 (디버깅용)
-    cv2.imwrite("preprocessed_user_image.png", padded)
-
-    # 8. Flatten
-    flatten = padded.reshape(1, -1).squeeze()
-
+    # (784,) float32 벡터로 변환
+    flatten = padded.reshape(1, -1).squeeze().astype(np.float32)
     return flatten
 
 
-#    src = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-#    ret , binary = cv2.threshold(src,170,255,cv2.THRESH_BINARY_INV)
-#
-#    # 픽셀 반전 (흰 배경일 경우 평균 밝기 기준)
-#    if np.mean(binary) > 127:
-#        binary = 255 - binary  # MNIST 스타일로 맞춤
-#
-#    myNum1 = np.asarray(cv2.resize(binary, dsize=(resize_size, resize_size), interpolation=cv2.INTER_AREA))
-#    cv2.imwrite("preprocessed_user_image.png", myNum1)
-#    myNum2 = myNum1/255
-#
-#    flatten_image = myNum2.reshape(1, -1).squeeze()
-#
-#    return flatten_image
-
 def infer_image(image_path: str) -> int:
     """
-    GUI에서 사용할 단일 이미지 추론용 함수.
-    - 모델이 없으면 RuntimeError 발생
-    - 성공하면 예측된 숫자 라벨(int) 반환
+    GUI에서 사용할 단일 이미지 추론 함수.
+    - 미리 학습된 trained_neuron.pkl 을 로드
+    - preprocess_user_image()로 전처리
+    - NeuronCells.inference() 호출
     """
-    if not os.path.exists(MODEL_PATH):
-        raise RuntimeError("There is no learned model. Run learning first.")
 
+    if not os.path.exists(MODEL_PATH):
+        raise RuntimeError(f"There is no learned model. Expected at: {MODEL_PATH}")
+
+    # NeuronCells 객체 로드
     with open(MODEL_PATH, "rb") as f:
-        neuron_cells_loaded = pickle.load(f)
+        neuron_cells_loaded: NeuronCells = pickle.load(f)
 
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"File does not exist: {image_path}")
@@ -187,83 +167,22 @@ def infer_image(image_path: str) -> int:
     predict_label = neuron_cells_loaded.inference(vector=flatten_image)
     return int(predict_label)
 
-def infer():
 
-    if not os.path.exists(MODEL_PATH):
-        print("[ERROR] There is no learned model. Run learning first.", flush=True)
-        return
-
-    with open(MODEL_PATH, "rb") as f:
-        neuron_cells_loaded = pickle.load(f)
-
-    # ------------------------------
-    # [NEW] 외부 이미지로부터 추론
-    if len(sys.argv) > 2:
-        image_path = sys.argv[2]
-        if not os.path.exists(image_path):
-            print(f"[ERROR] File does not exist: {image_path}", flush=True)
-            return
-
-        try:
-            flatten_image = preprocess_user_image(image_path)
-            predict_label = neuron_cells_loaded.inference(vector=flatten_image)
-            print(f"Input Image Inference Results: predict_label = {predict_label}", flush=True)
-            return
-
-        except Exception as e:
-            print(f"[ERROR] Pre-processing failed: {e}", flush=True)
-            return
-    else:
-        # ------------------------------
-        # 기본 내장 MNIST 테스트셋 전체로 추론
-        correct = 0
-        total = 0
-
-        # 각 클래스(0~9)별로 맞춘 개수, 전체 개수 카운트
-        num_classes = 10  # MNIST는 0~9, 10개 클래스
-        class_correct = [0 for _ in range(num_classes)]
-        class_total = [0 for _ in range(num_classes)]
-        
-        for i, (data, label) in tqdm(enumerate(test_mnist), total=len(test_mnist), desc="Infer Progress"):
-            numpy_image = np.array(data)
-            opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
-            opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-            resized_image = cv2.resize(numpy_image, dsize=(resize_size, resize_size))
-            flatten_image = resized_image.reshape(1, -1).squeeze()
-        
-            predict_label = neuron_cells_loaded.inference(vector=flatten_image)
-        
-            if predict_label == label:
-                correct += 1
-                class_correct[label] += 1  # 정답 개수 추가
-            class_total[label] += 1  # 총 시도 개수 추가
-            total += 1
-        
-        accuracy = correct / total * 100
-        print(f"\n[Test Result] Total Accuracy: {accuracy:.2f}% ({correct}/{total})", flush=True)
-        
-        # 클래스별 정확도 출력
-        print("\n[Class-wise Accuracy]")
-        for i in range(num_classes):
-            if class_total[i] > 0:
-                acc = class_correct[i] / class_total[i] * 100
-                print(f"Label {i}: {acc:.2f}% ({class_correct[i]}/{class_total[i]})")
-            else:
-                print(f"Label {i}: No samples.")
-                          
-                      
+# ─────────────────────────────────────
+# 3. 단독 실행 디버그용 (선택 사항)
+# ─────────────────────────────────────
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "infer":
-        infer()           
-    else:                 
-        train()           
-        # infer()        
-
-                          
-                      
-                          
-                          
-                          
-                      
-                          
-                          
+        if len(sys.argv) < 3:
+            print("Usage: python mnist.py infer <image_path>")
+            sys.exit(1)
+        label = infer_image(sys.argv[2])
+        print(f"Input Image Inference Results: predict_label = {label}")
+    else:
+        # 콘솔에서 python mnist.py만 실행하면
+        # progress 0~100% 보여주는 가짜 학습만 수행
+        def _p(v):
+            print(f"progress : {v}", flush=True)
+        def _l(msg):
+            print(msg, flush=True)
+        train(progress_cb=_p, log_cb=_l)

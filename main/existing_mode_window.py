@@ -1,8 +1,8 @@
 # existing_mode_window.py
 import sys
 import os
-import subprocess
 import traceback
+from path_utils import get_dirs
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -33,6 +33,7 @@ def resource_path(name: str) -> str:
 
 LOGO_PATH = resource_path("intellino_TM_transparent.png")
 HOME_ICON_PATH = resource_path("home.png")
+CUSTOM_IMAGE_ROOT, NUMBER_IMAGE_DIR, _ = get_dirs(__file__)
 
 
 # 1. Dataset 섹션 (클래스 분리)
@@ -169,27 +170,44 @@ class InferenceSection(QWidget):
         """)
         browse_btn.clicked.connect(self.browse_file)
 
-        start_btn = QPushButton("Start")
-        start_btn.setFixedSize(60, 35)
-        start_btn.setStyleSheet("""
+        self.start_btn = QPushButton("Start")
+        self.start_btn.setFixedSize(60, 35)
+        self.start_btn.setStyleSheet("""
             QPushButton {
                 background-color: #ffffff; border: 1px solid #ccc; border-radius: 8px; font-weight: bold;
             }
             QPushButton:hover { background-color: #e9ecef; }
             QPushButton:pressed { background-color: #adb5bd; color: white; }
         """)
-        start_btn.clicked.connect(self.startFunction)
+        self.start_btn.clicked.connect(self.startFunction)
 
         inference_layout.addWidget(self.file_input)
         inference_layout.addWidget(browse_btn)
-        inference_layout.addWidget(start_btn)
+        inference_layout.addWidget(self.start_btn)
         inference_group.setLayout(inference_layout)
 
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(inference_group)
 
     def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "All Files (*)")
+    # 기본 시작 폴더 결정
+        base_dir = NUMBER_IMAGE_DIR
+
+        # NUMBER_IMAGE_DIR가 None 이거나 폴더가 아니면,
+        # 현재 파일 기준으로 main/custom_image 같은 느낌으로 fallback
+        if not base_dir:
+            base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_image")
+
+        if not os.path.isdir(base_dir):
+            # 이것도 없으면 최종 fallback: 사용자 홈 디렉토리
+            base_dir = os.path.expanduser("~")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select File",
+            base_dir,
+            "Images (*.png *.jpg *.jpeg *.bmp);;All Files (*)"
+        )
         if file_path:
             self.file_input.setText(file_path)
 
@@ -276,6 +294,7 @@ class SubWindow(QWidget):
         super().__init__()
         self._mnist_train_worker = None
         self._mnist_infer_worker = None
+        self._mnist_trained_once = False
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)  # 테두리제거
         self.setAttribute(Qt.WA_TranslucentBackground)           # 창 배경에 투명 적용
         self.setFixedSize(800, 800)                              # 창 크기 고정
@@ -344,6 +363,7 @@ class SubWindow(QWidget):
         self.inference_section = InferenceSection()
         layout.addWidget(self.inference_section)
         self.inference_section.inference_requested.connect(self.run_inference)
+        self.inference_section.start_btn.setEnabled(False)
 
         # 4. Result (가변 스크롤)
         self.result_section = ResultSection()
@@ -363,7 +383,7 @@ class SubWindow(QWidget):
     def run_inference(self, file_path):
         file_path = file_path.strip()
         if not file_path:
-            self.result_section.result_text.append("[INFO] 먼저 추론할 파일을 선택해주세요.")
+            self.result_section.result_text.append("Select a file before starting inference.")
             return
 
         if self._mnist_infer_worker is not None and self._mnist_infer_worker.isRunning():
@@ -416,6 +436,9 @@ class SubWindow(QWidget):
 
     def _on_mnist_train_finished(self):
         self.result_section.result_text.append("MNIST training has been completed.")
+
+        self._mnist_trained_once = True
+        self.inference_section.start_btn.setEnabled(True)
 
     def _on_mnist_train_error(self, msg: str):
         self.result_section.result_text.append("[ERROR] MNIST 학습 중 오류 발생:")
