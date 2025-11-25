@@ -20,6 +20,7 @@ GLOBAL_FONT_QSS = """
 }
 """
 
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -31,13 +32,10 @@ class MainWindow(QMainWindow):
         self.ui.easyModeBtn.clicked.connect(self.subFunction)
         self.ui.hardModeBtn.clicked.connect(self.customFunction)
 
-        img_path  = resource_path("image/intellino_TM.png")
-        img_path2 = resource_path("image/intellino_TM_transparent.png")
-        img_path3 = resource_path("image/home.png")
-
-        print("img_path :", img_path,  os.path.exists(img_path))
-        print("img_path2:", img_path2, os.path.exists(img_path2))
-        print("img_path3:", img_path3, os.path.exists(img_path3))
+        # 이미지 경로를 resource_path로 해결
+        img_path  = resource_path("intellino_TM.png")
+        img_path2 = resource_path("intellino_TM_transparent.png")
+        img_path3 = resource_path("home.png")
 
         if os.path.exists(img_path):
             self.ui.imageLabel.setPixmap(QPixmap(img_path))
@@ -66,7 +64,7 @@ if __name__ == "__main__":
     icon_path = resource_path("icore_image.ico")
     app.setWindowIcon(QIcon(icon_path))
 
-    # 모든 창에 동일 폰트 적용: 여기서 단 한 번만!
+    # ★ 모든 창에 동일 폰트 적용: 여기서 단 한 번만!
     app.setStyleSheet(GLOBAL_FONT_QSS)
 
     window = MainWindow()

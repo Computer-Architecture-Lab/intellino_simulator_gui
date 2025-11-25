@@ -13,7 +13,7 @@ from intellino.core.neuron_cell import NeuronCells
 
 # 공통 유틸
 from utils.resource_utils import resource_path
-from utils.image_preprocess import preprocess_user_image
+from utils.image_preprocess import preprocess_digit_image
 
 
 # 미리 학습해 둔 모델 파일 (PyInstaller에서 같이 패키징됨)
@@ -69,6 +69,18 @@ def train(progress_cb=None, log_cb=None):
         except Exception:
             pass
 
+
+# ─────────────────────────────────────
+# 2. 이미지 전처리 + 단일 이미지 추론 함수
+# ─────────────────────────────────────
+def preprocess_user_image(image_path: str) -> np.ndarray:
+    """
+    utils.image_preprocess.preprocess_digit_image 를 그대로 사용하는 래퍼.
+    (custom_3와 동일한 전처리 파이프라인 공유)
+    """
+    return preprocess_digit_image(image_path)
+
+
 def infer_image(image_path: str) -> int:
     """
     GUI에서 사용할 단일 이미지 추론 함수.
@@ -87,7 +99,7 @@ def infer_image(image_path: str) -> int:
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"File does not exist: {image_path}")
 
-    flatten_image = preprocess_user_image(image_path, LENGTH_OF_INPUT_VECTOR)
+    flatten_image = preprocess_user_image(image_path)
     predict_label = neuron_cells_loaded.inference(vector=flatten_image)
     return int(predict_label)
 

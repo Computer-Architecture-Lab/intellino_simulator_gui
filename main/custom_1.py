@@ -10,23 +10,12 @@ from PySide2.QtCore import QPropertyAnimation, Qt, QSize
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 
 from custom_2 import launch_training_window
+
 from utils.resource_utils import resource_path
 from utils.ui_common import TitleBar, BUTTON_STYLE, TOGGLE_BUTTON_STYLE
-#=======================================================================================================#
 
-# 두 번째 이미지와 같은 큰 테두리 높이
-SECOND_STYLE_FIXED_HEIGHT = 390
-
-# 메모리 검토 시 사용할 "최소" 기준값
-MIN_INPUT_VECTOR_LENGTH = 64       # input vector length 최소
-MIN_SAMPLES_PER_CLASS = 2          # sample dataset per class 최소
-
-# Intellino 메모리 크기(KB → Byte)
-INTELLINO_MEMORY_BYTES = {
-    2: 2048,
-    8: 8192,
-    16: 16384,
-}
+# 두 번째 이미지와 같은 큰 테두리 높이(필요시 140~180 사이에서 조정)
+SECOND_STYLE_FIXED_HEIGHT = 160
 
 # ── GroupBox 스타일 ──
 GROUPBOX_WITH_FLOATING_TITLE = """
@@ -46,10 +35,8 @@ GROUPBOX_WITH_FLOATING_TITLE = """
     }
 """
 
-#=======================================================================================================#
-#                                               UI 구성                                                  #
-#=======================================================================================================#
-# 공통 입력 박스 베이스
+# -----------------------------
+# 공통 입력 박스 베이스(2~4)
 class IntegerInputGroup(QGroupBox):
     def __init__(self, title, example_text, on_apply=None, notice_text=None):
         super().__init__(title)
@@ -57,9 +44,9 @@ class IntegerInputGroup(QGroupBox):
         self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE)
         self.setMaximumHeight(130)
 
-        self.main_layout = QVBoxLayout()
-        self.main_layout.setContentsMargins(10, 10, 10, 10)
-        self.main_layout.setSpacing(6)
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(6)
 
         h_layout = QHBoxLayout()
         h_layout.setSpacing(10)
@@ -83,15 +70,15 @@ class IntegerInputGroup(QGroupBox):
 
         h_layout.addWidget(self.input)
         h_layout.addWidget(self.apply_btn)
-        self.main_layout.addLayout(h_layout)
+        main_layout.addLayout(h_layout)
 
         if notice_text:
             notice = QLabel(notice_text)
             notice.setWordWrap(True)
             notice.setStyleSheet("font-size: 11px; color: #555;")
-            self.main_layout.addWidget(notice)
+            main_layout.addWidget(notice)
 
-        self.setLayout(self.main_layout)
+        self.setLayout(main_layout)
 
     def _on_apply_clicked(self):
         if self.on_apply_callback:
@@ -108,22 +95,39 @@ class IntegerInputGroup(QGroupBox):
         if trigger_update and self.on_apply_callback:
             self.on_apply_callback()
 
+
 class CategoryInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
-        super().__init__("2. Number of class to store", "ex) 10", on_apply=on_apply)
+        super().__init__("2. Number of class to train", "ex) 10", on_apply=on_apply)
         self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
 
-        # max: N 표시용 라벨
-        self.max_label = QLabel("max: -")
-        self.max_label.setStyleSheet("font-size: 11px; color: #888;")
-        self.main_layout.addWidget(self.max_label)
 
-    def set_max(self, max_value: int):
-        if max_value is None or max_value <= 0:
-            self.max_label.setText("max: -")
-        else:
-            self.max_label.setText(f"max: {max_value}")
+class TrainingInputGroup(IntegerInputGroup):
+    def __init__(self, on_apply=None):
+        super().__init__(
+            "3. Number of training dataset per class",
+            "ex) 10       Write only one unsigned integer number",
+            on_apply=on_apply,
+            notice_text=(
+                "※ Number of training dataset should be more or equal than number of category to train.\n"
+                "※ We recommend preparing at least 100 samples for each category in the training dataset."
+            )
+        )
+        self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
 
+
+class InputVectorGroup(IntegerInputGroup):
+    def __init__(self, on_apply=None):
+        super().__init__(
+            "4. Input vector length",
+            "Write only one unsigned integer number",
+            on_apply=on_apply,
+            notice_text="※ Number of training dataset should be more or equal than number of category to train."
+        )
+        self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
+
+
+# -----------------------------
 # 1. Intellino memory size
 class IntellinoMemorySizeGroup(QGroupBox):
     def __init__(self, on_select=None):
@@ -167,35 +171,16 @@ class IntellinoMemorySizeGroup(QGroupBox):
     def get_selected_size_kbyte(self):
         return self._selected_kbyte
 
-# 3. Required memory size
+
+# -----------------------------
+# 5. Required memory size
 class MemorySizeSection(QGroupBox):
     def __init__(self):
-        super().__init__("3. Required memory size")
-
-        # ★ 변경: 3번 박스만 padding을 줄여서 회색 칸에 딱 맞게 감싸도록 별도 스타일 사용
-        self.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #b0b0b0;
-                border-radius: 10px;
-                margin-top: 10px;
-                padding: 4px;               /* 기존 10px → 4px 로 줄임 */
-                background: transparent;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 5px;
-                background-color: white;
-                color: #000000;
-                font-weight: bold;
-            }
-        """)
+        super().__init__("5. Required memory size")
         self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
-        
+
         layout = QVBoxLayout()
-        # ★ 변경: GroupBox 안쪽 여백도 최소화
-        layout.setContentsMargins(4, 14, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         self.output_box = QTextBrowser()
         self.output_box.setStyleSheet("""
@@ -206,7 +191,6 @@ class MemorySizeSection(QGroupBox):
                 background-color: #f8f9fa;
             }
         """)
-        # 회색 칸 높이를 항상 고정
         self.output_box.setFixedHeight(SECOND_STYLE_FIXED_HEIGHT)
 
         layout.addWidget(self.output_box)
@@ -214,39 +198,34 @@ class MemorySizeSection(QGroupBox):
 
     def update_display(self, input_vector_length: int, training_dataset: int, num_classes: int,
                        selected_mem_kb=None, exceed: bool = False):
-        if num_classes <= 0:
+        if input_vector_length <= 0 or training_dataset <= 0 or num_classes <= 0:
             self.output_box.setText(
-                "Please select memory size and enter a valid number of class to store."
+                "Please enter valid input vector length, number of training dataset per class, "
+                "and number of class to train."
             )
             return
 
         comparator = ">" if exceed else "≤"
 
         text = (
-            "Assuming minimum settings:\n"
-            f"  input vector length ≥ {input_vector_length}\n"
-            f"  number of sample dataset per class ≥ {training_dataset}\n\n"
-            "input vector length × number of sample dataset per class × "
-            "number of class to store ≤ memory size\n\n"
-            f"⇒ {input_vector_length} × {training_dataset} × {num_classes} "
-            f"{comparator} memory size\n"
+            "input vector length × number of training dataset per class × number of class to train ≤ memory size\n\n"
+            f"⇔ {input_vector_length} × {training_dataset} × {num_classes} {comparator} memory size\n"
         )
         if selected_mem_kb is not None:
             text += f"\nSelected(Intellino): {selected_mem_kb}KByte"
         if exceed:
-            text += "\n\nEven with minimum settings, this number of classes exceeds the memory size."
+            text += "\n\nThe configuration value exceeds the memory size."
 
         self.output_box.setText(text)
 
 
-#=======================================================================================================#
-#                                                 main                                                  #
-#=======================================================================================================#
+# -----------------------------
+# 메인 윈도우 — 스크롤 없이 ‘한 화면’에 맞춤
 class Custom_1_Window(QWidget):
     def __init__(self, prev_window=None):
         super().__init__()
         self._prev_window = prev_window
-        self._applied = {'cat': False}
+        self._applied = {'cat': False, 'train': False, 'vec': False}
         self._setup_ui()
 
     def _setup_ui(self):
@@ -271,25 +250,25 @@ class Custom_1_Window(QWidget):
         self.main_layout.setContentsMargins(20, self.title_bar.height() + 8, 20, 12)
         self.main_layout.setSpacing(16)
 
-        # 1. 메모리 선택
         self.intellino_mem_group = IntellinoMemorySizeGroup(on_select=self.on_memory_size_selected)
         self.main_layout.addWidget(self.intellino_mem_group)
 
-        # 2. class 입력
         self.category_input = CategoryInputGroup(on_apply=lambda: self.on_input_applied('cat'))
         self.main_layout.addWidget(self.category_input)
 
-        # 3. Required memory size 표시
+        self.train_data_input = TrainingInputGroup(on_apply=lambda: self.on_input_applied('train'))
+        self.main_layout.addWidget(self.train_data_input)
+
+        self.input_vector_input = InputVectorGroup(on_apply=lambda: self.on_input_applied('vec'))
+        self.main_layout.addWidget(self.input_vector_input)
+
         self.memory_display = MemorySizeSection()
         self.main_layout.addWidget(self.memory_display)
-
-        # Next 버튼 바
-        self.next_bar = self._create_next_bar()
-        self.main_layout.addWidget(self.next_bar)
+        self.main_layout.addWidget(self._create_next_bar())
 
     def _create_next_bar(self):
         bar = QWidget()
-        h = QHBoxLayout()
+        h = QHBoxLayout(bar)
         h.setContentsMargins(0, 0, 0, 0)
         h.addStretch()
 
@@ -307,28 +286,16 @@ class Custom_1_Window(QWidget):
         self.next_btn.clicked.connect(self.nextFunction)
 
         h.addWidget(self.next_btn)
-        bar.setLayout(h)
+        self.next_bar = bar
         return bar
 
-    def _compute_max_classes_for_memory(self, mem_kb: int):
-        if mem_kb is None:
-            return None
-
-        mem_bytes = INTELLINO_MEMORY_BYTES.get(mem_kb)
-        if mem_bytes is None:
-            return None
-
-        per_class_bytes_min = MIN_INPUT_VECTOR_LENGTH * MIN_SAMPLES_PER_CLASS
-        if per_class_bytes_min <= 0:
-            return None
-
-        return mem_bytes // per_class_bytes_min
-
     def on_memory_size_selected(self, value_kb: int):
-        max_classes = self._compute_max_classes_for_memory(value_kb)
-        self.category_input.set_max(max_classes)
+        self.category_input.set_value(10)
+        self.input_vector_input.set_value(196)
+        train_map = {2: 1, 8: 4, 16: 8}
+        self.train_data_input.set_value(train_map.get(value_kb, 0))
 
-        self._applied = {'cat': False}
+        self._applied = {'cat': False, 'train': False, 'vec': False}
         self.update_memory_display()
 
     def on_input_applied(self, key: str):
@@ -336,36 +303,26 @@ class Custom_1_Window(QWidget):
         self.update_memory_display()
 
     def update_memory_display(self):
-        selected_mem = self.intellino_mem_group.get_selected_size_kbyte()
+        vec_len = self.input_vector_input.get_value()
+        train_num = self.train_data_input.get_value()
         category_num = self.category_input.get_value()
+        selected_mem = self.intellino_mem_group.get_selected_size_kbyte()
+        thresholds = {2: 2048, 8: 8192, 16: 16384}
+        product = vec_len * train_num * category_num
+        exceed = (selected_mem in thresholds) and (product > thresholds[selected_mem])
 
-        product_min = MIN_INPUT_VECTOR_LENGTH * MIN_SAMPLES_PER_CLASS * category_num
-        exceed = (
-            selected_mem in INTELLINO_MEMORY_BYTES
-            and product_min > INTELLINO_MEMORY_BYTES[selected_mem]
-        )
+        self.memory_display.update_display(vec_len, train_num, category_num, selected_mem, exceed)
 
-        self.memory_display.update_display(
-            MIN_INPUT_VECTOR_LENGTH,
-            MIN_SAMPLES_PER_CLASS,
-            category_num,
-            selected_mem,
-            exceed
-        )
-
-        all_applied = self._applied['cat']
+        all_applied = self._applied['cat'] and self._applied['train'] and self._applied['vec']
         self.next_btn.setEnabled(
-            all_applied
-            and selected_mem is not None
-            and category_num > 0
-            and not exceed
+            all_applied and vec_len > 0 and train_num > 0 and category_num > 0 and not exceed
         )
 
     def nextFunction(self):
         launch_training_window(
             num_categories=self.category_input.get_value(),
-            samples_per_class=MIN_SAMPLES_PER_CLASS,
-            input_vector_length=MIN_INPUT_VECTOR_LENGTH,
+            samples_per_class=self.train_data_input.get_value(),
+            input_vector_length=self.input_vector_input.get_value(),
             selected_mem_kb=self.intellino_mem_group.get_selected_size_kbyte(),
             prev_window=self
         )

@@ -11,15 +11,14 @@ from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
 from PySide2.QtCore import Qt, QSize, Signal
 
 from custom_3 import SubWindow as Window3
-from utils.path_utils import get_dirs
+from path_utils import get_dirs
 
 from utils.resource_utils import resource_path
 from utils.ui_common import BUTTON_STYLE
-#=======================================================================================================#
 
 ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH = resource_path("image/intellino_TM_transparent.png")
-HOME_ICON_PATH = resource_path("image/home.png")
+LOGO_PATH = resource_path("intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("home.png")
 
 MESSAGE_BOX_QSS = """
 QMessageBox {
@@ -50,50 +49,33 @@ GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
 """
 # ---------------------------------------------------------------------
 
-# get_dirs 결과 중 BASE_NUMBER_DIR만 실제로 사용
-_, BASE_NUMBER_DIR, _ = get_dirs(__file__)
+CUSTOM_IMAGE_ROOT, BASE_NUMBER_DIR, KMEANS_SELECTED_DIR = get_dirs(__file__)
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
 BUTTON_STYLE_LOCAL = BUTTON_STYLE  # alias (필요 시 커스터마이징 가능)
-#=======================================================================================================#
-#                                              function                                                 #
-#=======================================================================================================#
-# custom_1에서 import 해서 사용하는 함수
-def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
-    """
-    custom_1에서 호출하는 진입 함수.
-    전달받은 파라미터로 Custom_2_Window를 띄워준다.
-    """
-    window = Custom_2_Window(
-        num_categories=num_categories,
-        samples_per_class=samples_per_class,
-        input_vector_length=input_vector_length,
-        selected_mem_kb=selected_mem_kb,
-        prev_window=prev_window,
-    )
-    window.show()
-    return window
-#=======================================================================================================#
-#                                               UI 구성                                                  #
-#=======================================================================================================#
+
+
+# 경로 정규화/비교 유틸 ----------------------------------------------------
+def _canon_path(p: str) -> str:
+    """realpath + abspath + 대소문자까지 통일해서 비교용 문자열 생성"""
+    try:
+        return os.path.normcase(os.path.realpath(os.path.abspath(p)))
+    except Exception:
+        return os.path.normcase(os.path.abspath(p))
+# ---------------------------------------------------------------------
+
+
 class TrainDatasetGroup(QGroupBox):
     """
-    4. Datasets of each category
+    6. Training datasets of each category
 
-    - C(=num_categories) 개수만큼 행을 만든다.
-    - 각 행에서 폴더를 하나 선택하면
-      → 그 폴더 안의 이미지(.png, .jpg, .jpeg, .bmp) 전체를
-         해당 category의 'raw sample data'로 보관만 한다.
-    - 실제로 sample / test 로 나누는 작업은
-      custom_3(Window3)에서 selection['files']를 받아서 별도로 수행한다.
+    - 각 카테고리별로 '로컬 임의 폴더'를 선택할 수 있도록 제한을 풀었습니다.
+    - 조건: 폴더 존재 + 이미지 개수 >= required_per_class + 라벨 텍스트 존재
     """
     completeness_changed = Signal(bool)
 
-    MIN_IMAGES_PER_CATEGORY = 12
-
-#카테고리 수를 받아서 UI(각 카테고리별 폴더 선택 행)를 초기화하고 표시할 준비를 한다.
-    def __init__(self, num_categories=3, base_dir=BASE_NUMBER_DIR):
-        super().__init__("4. Datasets of each category")
+    def __init__(self, num_categories=3, base_dir=BASE_NUMBER_DIR, required_per_class=1):
+        super().__init__("6. Training datasets of each category")
 
         try:
             from custom_1 import GROUPBOX_WITH_FLOATING_TITLE as GB_STYLE
@@ -108,8 +90,11 @@ class TrainDatasetGroup(QGroupBox):
             }
         """)
 
-        # 폴더 선택 시 기본 시작 위치로 사용할 경로
+        # 기준 경로(기본 시작 위치로만 사용)
         self.base_dir = os.path.abspath(base_dir)
+        self._base_dir_canon = _canon_path(self.base_dir)
+
+        self.required_per_class = max(1, int(required_per_class))
 
         self.category_inputs = []   # (dir_input, label_input)
         self.row_widgets = []       # {"dir_input":..,"label_input":..,"count_label":..}
@@ -118,7 +103,6 @@ class TrainDatasetGroup(QGroupBox):
         self._build_ui(num_categories)
         self._on_fields_changed()
 
-#C개의 카테고리 입력 행 생성(UI 구성), 폴더 입력창·라벨·이미지 개수 표시 뱃지를 만든다.
     def _build_ui(self, num_categories):
         outer_layout = QVBoxLayout(self)
 
@@ -166,9 +150,8 @@ class TrainDatasetGroup(QGroupBox):
             # 어디든 선택 가능
             browse_btn.clicked.connect(partial(self.browse_any_folder, dir_input))
 
-            # 폴더 안 이미지 개수 표시 (예: "12 images")
-            count_badge = QLabel("0 images")
-            count_badge.setFixedWidth(90)
+            count_badge = QLabel(f"0/{self.required_per_class}")
+            count_badge.setFixedWidth(70)
             count_badge.setFixedHeight(ROW_EDIT_H - 4)
             count_badge.setAlignment(Qt.AlignCenter)
             count_badge.setStyleSheet(self._badge_style(0))
@@ -189,9 +172,7 @@ class TrainDatasetGroup(QGroupBox):
             h.addWidget(label_input)
 
             self.category_inputs.append((dir_input, label_input))
-            self.row_widgets.append(
-                {"dir_input": dir_input, "label_input": label_input, "count_label": count_badge}
-            )
+            self.row_widgets.append({"dir_input": dir_input, "label_input": label_input, "count_label": count_badge})
             v.addLayout(h)
 
             if num_categories <= 4 and i < num_categories:
@@ -222,41 +203,27 @@ class TrainDatasetGroup(QGroupBox):
             """)
             outer_layout.addWidget(scroll)
 
-#이미지 개수 n에 따라 초록(이미지 있음) / 빨강(없음) 스타일시트를 반환한다.
     def _badge_style(self, n):
-        """
-        단순히 '이미지가 있냐/없냐'만 시각적으로 표시.
-        n > 0  → 초록 (OK)
-        n == 0 → 빨강 (데이터 없음)
-        """
-        if n > self.MIN_IMAGES_PER_CATEGORY:
-            return (
-                "QLabel { background:#e6fcf5; border:1px solid #37b24d; "
-                "color:#2b8a3e; border-radius:6px; padding:4px; }"
-            )
+        if n >= self.required_per_class:
+            return "QLabel { background:#e6fcf5; border:1px solid #37b24d; color:#2b8a3e; border-radius:6px; padding:4px; }"
+        elif n > 0:
+            return "QLabel { background:#fff4e6; border:1px solid #f08c00; color:#d9480f; border-radius:6px; padding:4px; }"
         else:
-            return (
-                "QLabel { background:#ffe3e3; border:1px solid #fa5252; "
-                "color:#c92a2a; border-radius:6px; padding:4px; }"
-            )
-
-#주어진 폴더 안에서 .png/.jpg/.jpeg/.bmp 이미지 파일 개수를 센다
-    def _count_images_in_dir(self, path: str) -> int:
-        if not os.path.isdir(path):
-            return 0
-        try:
-            return sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
-        except Exception:
-            return 0
+            return "QLabel { background:#ffe3e3; border:1px solid #fa5252; color:#c92a2a; border-radius:6px; padding:4px; }"
 
     def _update_row_status(self, di, cl):
         path = di.text().strip()
-        n = self._count_images_in_dir(path)
-        cl.setText(f"{n} images")
+        n = 0
+        if os.path.isdir(path):
+            try:
+                n = sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
+            except Exception:
+                n = 0
+        cl.setText(f"{n}/{self.required_per_class}")
         cl.setStyleSheet(self._badge_style(n))
 
     def browse_any_folder(self, dir_input):
-        """로컬 디스크 어디든 폴더 선택 허용. 폴더 안의 이미지는 '전부' 보관."""
+        """로컬 디스크 어디든 폴더 선택 허용."""
         start_dir = self.base_dir if os.path.isdir(self.base_dir) else os.path.expanduser("~")
         path = QFileDialog.getExistingDirectory(
             self,
@@ -268,15 +235,29 @@ class TrainDatasetGroup(QGroupBox):
             return
 
         dir_input.setText(path)
-        # 실제 개수는 _on_fields_changed → _update_row_status 에서 갱신.
+
+        # 이미지 개수 확인(부족하면 경고만)
+        try:
+            n = sum(1 for f in os.listdir(path) if str(f).lower().endswith(IMG_EXTS))
+        except Exception:
+            n = 0
+        if n < self.required_per_class:
+            box = QMessageBox(self)
+            box.setWindowTitle("Not enough images")
+            box.setIcon(QMessageBox.Warning)
+            box.setText(
+                f"This folder has {n} images (required {self.required_per_class}).\n"
+                "Please add more images or select another folder."
+            )
+            box.setStyleSheet(MESSAGE_BOX_QSS)
+            box.exec_()
 
     def is_complete(self) -> bool:
         """
-        각 행이 '완성'되었다고 판단하는 조건:
-        - 디렉터리 경로 입력됨
-        - 디렉터리 실제 존재
-        - 이미지가 1장 이상 존재
-        - 라벨 텍스트가 비어 있지 않음
+        각 행:
+        - 디렉터리 존재
+        - 이미지 개수 >= required_per_class
+        - 라벨 텍스트 존재
         """
         for row in self.row_widgets:
             d = row["dir_input"].text().strip()
@@ -285,8 +266,12 @@ class TrainDatasetGroup(QGroupBox):
                 return False
             if not os.path.isdir(d):
                 return False
-            n = self._count_images_in_dir(d)
-            if n < self.MIN_IMAGES_PER_CATEGORY:
+
+            try:
+                n = sum(1 for f in os.listdir(d) if str(f).lower().endswith(IMG_EXTS))
+            except Exception:
+                return False
+            if n < self.required_per_class:
                 return False
         return True
 
@@ -302,42 +287,16 @@ class TrainDatasetGroup(QGroupBox):
             self.completeness_changed.emit(ok)
 
     def get_selection(self):
-        """
-        각 category에 대해:
-        - dir   : 선택된 폴더 경로
-        - label : 사용자가 입력한 라벨
-        - files : 폴더 안의 이미지 파일 전체 경로 리스트
-        를 반환한다.
-        (여기서는 '보관만' 하고, 실제 sample / test split은
-         custom_3에서 selection['files'] 기반으로 수행)
-        """
         items = []
         for idx, row in enumerate(self.row_widgets, start=1):
-            d = row["dir_input"].text().strip()
-            l = row["label_input"].text().strip()
-
-            files = []
-            if os.path.isdir(d):
-                try:
-                    files = [
-                        os.path.join(d, f)
-                        for f in os.listdir(d)
-                        if str(f).lower().endswith(IMG_EXTS)
-                    ]
-                except Exception:
-                    files = []
-
             items.append({
                 "category_index": idx,
-                "dir": d,
-                "label": l,
-                "files": files,   # 폴더 안 raw sample data 전부
+                "dir": row["dir_input"].text().strip(),
+                "label": row["label_input"].text().strip()
             })
         return items
 
-#=======================================================================================================#
-#                                                 main                                                  #
-#=======================================================================================================#
+
 class Custom_2_Window(QWidget):
     def __init__(self, num_categories=3, samples_per_class=1, input_vector_length=0, selected_mem_kb=None, prev_window=None):
         super().__init__()
@@ -347,6 +306,7 @@ class Custom_2_Window(QWidget):
         self.selected_mem_kb = selected_mem_kb
         self.win3 = None
         self.prev_window = prev_window
+        self._orig_app_qss = ""
         self._setup_ui()
 
     def _setup_ui(self):
@@ -371,10 +331,10 @@ class Custom_2_Window(QWidget):
         layout.setContentsMargins(20, 60, 20, 20)
         layout.setSpacing(24)
 
-        # 여기서는 class별 raw sample data 폴더만 선택
         self.dataset_group = TrainDatasetGroup(
             num_categories=self.num_categories,
             base_dir=BASE_NUMBER_DIR,
+            required_per_class=self.samples_per_class
         )
         layout.addWidget(self.dataset_group)
         self.dataset_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -437,8 +397,7 @@ class Custom_2_Window(QWidget):
         self.back_btn.setStyleSheet(btn_style)
         self.back_btn.clicked.connect(self.go_back)
 
-        # 버튼 라벨을 'Start'로 변경
-        self.next_btn = QPushButton("Start")
+        self.next_btn = QPushButton("Train Start")
         self.next_btn.setFixedSize(100,40)
         self.next_btn.setStyleSheet(btn_style)
         self.next_btn.clicked.connect(self.start_kmeans)
@@ -451,9 +410,8 @@ class Custom_2_Window(QWidget):
 
     def start_kmeans(self):
         """
-        Start 버튼 핸들러.
-        선택된 폴더 내 raw sample 이미지 전체를 다음 창(custom_3.SubWindow)에 넘긴다.
-        (실제 sample / test split은 custom_3에서 selection['files'] 기반으로 수행)
+        Train Start 버튼 핸들러.
+        애니메이션 없이 다음 창(custom_3.SubWindow)로 전환만 수행합니다.
         """
         if not self.dataset_group.is_complete():
             return
@@ -505,6 +463,26 @@ class Custom_2_Window(QWidget):
     def mouseMoveEvent(self, e):
         if hasattr(self, 'offset') and e.buttons() == Qt.LeftButton:
             self.move(self.pos() + e.pos() - self.offset)
+
+
+# ─────────────────────────────────────────────
+# custom_1에서 import 해서 사용하는 함수
+# ─────────────────────────────────────────────
+def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
+    """
+    custom_1에서 호출하는 진입 함수.
+    전달받은 파라미터로 Custom_2_Window를 띄워준다.
+    """
+    window = Custom_2_Window(
+        num_categories=num_categories,
+        samples_per_class=samples_per_class,
+        input_vector_length=input_vector_length,
+        selected_mem_kb=selected_mem_kb,
+        prev_window=prev_window,
+    )
+    window.show()
+    return window
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
