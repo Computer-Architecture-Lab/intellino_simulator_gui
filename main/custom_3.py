@@ -1,16 +1,13 @@
-# custom_3.py — train/test split with accuracy + native file dialog
-
-
 import sys, os, shutil, datetime, numpy as np, traceback, pickle, cv2
+import math
+import time
 from PIL import Image  # (남겨두지만 학습·평가·추론은 모두 OpenCV 기반 전처리 사용)
 from utils.resource_utils import resource_path
 from utils.image_preprocess import preprocess_digit_image
 from utils.ui_common import TitleBar, BUTTON_STYLE
 
-
 # 추론 경로 제어(기본 False: 어느 경로든 허용, 단 학습 파일 차단)
 INFER_ONLY_FROM_TEST = False
-
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -19,10 +16,12 @@ from PySide2.QtWidgets import (
 )
 from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor, QTextCursor
 from PySide2.QtCore import Qt, QSize, QTimer, QPropertyAnimation, QEasingCurve
-
 from path_utils import get_dirs
-# ▶ 실험 상태 전역 객체(커스텀4에서 정의)
+
+from intellino.core.neuron_cell import NeuronCells
+# 실험 상태 전역 객체(커스텀4에서 정의)
 from custom_4 import EXPERIMENT_STATE
+
 
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
@@ -42,6 +41,9 @@ try:
             NUMBER_IMAGE_DIR = cand
 except Exception:
     pass
+#=======================================================================================================#
+#                                           function                                                    #
+#=======================================================================================================#
 
 def _is_writable_dir(path: str) -> bool:
     try:
@@ -146,11 +148,8 @@ def kmeans_clustering(vectors: np.ndarray, num_select: int,
 
 MODEL_BASENAME = "custom_model.pkl"
 
-# ---------------------------
 # 전처리(단일 파이프라인)
 # → utils.image_preprocess.preprocess_digit_image 를 사용합니다.
-
-# ---------------------------
 def load_images_from_dir(dir_path: str):
     files = [os.path.join(dir_path, f) for f in sorted(os.listdir(dir_path))
              if str(f).lower().endswith(IMG_EXTS)]
@@ -165,7 +164,6 @@ def load_images_from_dir(dir_path: str):
         return np.empty((0,784), dtype=np.float32), []
     return np.stack(X, axis=0), keep
 
-
 def vectorize_like_training(path: str):
     """과거 함수명 유지: 공통 숫자 전처리 래퍼"""
     try:
@@ -178,49 +176,97 @@ def preprocess_user_image(image_path: str) -> np.ndarray:
     """공통 숫자 전처리 래퍼"""
     return preprocess_digit_image(image_path)
 
-# ---------------------------
-# 간단 최근접-이웃 모델(L1)
-class SimpleNearestModel:
-    def __init__(self):
-        self.vectors = None
-        self.labels  = []
+# Intellino train
+def train(neuron_cells,
+          train_samples,
+          number_of_neuron_cells,
+          length_of_input_vector,
+          save_path: str = "temp/trained_neuron.pkl",
+          progress_callback=None):
+    resize_size = int(math.sqrt(length_of_input_vector))
+    total = min(len(train_samples), number_of_neuron_cells)
 
-    def fit_from_root(self, root_dir: str):
-        if not os.path.isdir(root_dir):
-            raise ValueError(f"Train root not found: {root_dir}")
-        vecs, labs = [], []
-        subdirs = [d for d in sorted(os.listdir(root_dir))
-                   if os.path.isdir(os.path.join(root_dir, d))]
-        for d in subdirs:
-            X, _ = load_images_from_dir(os.path.join(root_dir, d))
-            if X.size == 0:
-                continue
-            vecs.append(X); labs += [d]*X.shape[0]
-        if not vecs:
-            raise RuntimeError("No images found for training.")
-        self.vectors = np.concatenate(vecs, axis=0).astype(np.float32)
-        self.labels  = labs
+    trained = 0
+    is_finish_flag = False
 
-    def predict(self, vector: np.ndarray, top_k: int = 3):
-        if self.vectors is None or not self.labels:
-            raise RuntimeError("Model not trained.")
-        dists = np.abs(self.vectors - vector[None,:]).sum(axis=1)
-        idx = np.argsort(dists)[:max(1, top_k)]
-        return [self.labels[i] for i in idx], [float(dists[i]) for i in idx]
+    for idx, (img_path, label) in enumerate(train_samples):
+        if trained >= number_of_neuron_cells:
+            break
 
-    def save(self, path: str):
-        with open(path, "wb") as f:
-            pickle.dump({"vectors": self.vectors, "labels": self.labels}, f)
+        # data 대신 이미지 파일에서 PIL Image 로드
+        data = Image.open(img_path).convert("RGB")
+        numpy_image = np.array(data)
+        opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
+        opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
+        resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
+        flatten_image = resized_image.reshape(1, -1).squeeze()
+        # ----------------------------------------
 
-    def load(self, path: str):
-        with open(path, "rb") as f:
-            obj = pickle.load(f)
-        self.vectors = obj["vectors"].astype(np.float32)
-        self.labels  = list(obj["labels"])
+        # label 타입 정리 (문자열 "0" 같은 것도 int로 변환 시도)
+        try:
+            target_label = int(label)
+        except (ValueError, TypeError):
+            target_label = label
 
-# ---------------------------
-# UI 구성 요소
+        is_finish = neuron_cells.train(vector=flatten_image, target=target_label)
 
+        trained += 1
+
+        # 학습 진행률 (실제로 학습한 개수 기준)
+        progress = int(trained / number_of_neuron_cells * 100)
+        if progress_callback is not None:
+            # GUI(progress bar) 업데이트용 콜백
+            progress_callback(progress)
+        else:
+            # 콜백이 없으면 기존처럼 콘솔 출력
+            if trained % 4 == 0:
+                print(f"progress : {progress}", flush=True)
+                time.sleep(0.01)
+
+        # 이거 is_finish가 True가 안될수도 있을거같은데...
+        if is_finish:
+            print("train finish")
+            is_finish_flag = True
+            break
+
+    # 학습 완료 후 모델 저장
+    if save_path:
+        # temp 폴더 없으면 생성
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "wb") as f:
+            pickle.dump(neuron_cells, f)
+        print(f"neuron_cells saved to: {save_path}")
+
+    return is_finish_flag
+
+# Intellino infer
+def infer(neuron_cells,
+          image_path: str,
+          length_of_input_vector: int):
+   
+    if neuron_cells is None:
+        raise RuntimeError("NeuronCells is not initialized.")
+
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"File does not exist: {image_path}")
+
+    resize_size = int(math.sqrt(length_of_input_vector))
+
+    # train()과 동일한 전처리
+    data = Image.open(image_path).convert("RGB")
+    numpy_image = np.array(data)
+    opencv_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2BGR)
+    opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
+    resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
+    flatten_image = resized_image.reshape(1, -1).squeeze()
+
+    # Intellino 추론
+    predict_label = neuron_cells.inference(vector=flatten_image)
+    return predict_label
+
+#=======================================================================================================#
+#                                               UI 구성                                                  #
+#=======================================================================================================#
 class ProgressSection(QWidget):
     def __init__(self, title="7. Train"):
         super().__init__()
@@ -291,8 +337,9 @@ class InferenceSection(QWidget):
         g.setLayout(h)
         v = QVBoxLayout(self); v.addWidget(g)
 
-# ---------------------------
-# 메인 창
+#=======================================================================================================#
+#                                                 main                                                  #
+#=======================================================================================================#
 class SubWindow(QWidget):
     def __init__(self, selection, samples_per_class: int = 1, prev_window=None, output_root=DEFAULT_OUTPUT_ROOT, exp_params=None):
         super().__init__()
@@ -304,9 +351,18 @@ class SubWindow(QWidget):
 
         self.exp_params = exp_params or {}
 
-        self.num_categories = len(self.selection)
-        self.model = SimpleNearestModel()
+        self.num_classes = int(self.exp_params.get("num_classes", len(self.selection)))
 
+        # 입력 벡터 길이 
+        self.length_of_input_vector = int(self.exp_params.get("input_vec_len", 784))
+        # 클래스당 샘플 수 
+        self.samples_per_class = int(self.exp_params.get("samples_per_class", self.samples_per_class))
+        # number_of_neuron_cells = num_classes × samples_per_class
+        self.number_of_neuron_cells = self.num_classes * self.samples_per_class
+        self.num_categories = len(self.selection)
+
+        self.train_samples = []
+        self.neuron_cells = None
         self._last_save_root = ""
         self._datasets_root  = ""
         self._train_dir      = ""
@@ -320,7 +376,7 @@ class SubWindow(QWidget):
         self._setup_ui()
         QTimer.singleShot(150, self._run_kmeans_and_train)
 
-    # ------------ helpers ------------
+    # ------------------------------------- helpers ---------------------------------------------
     def _ok(self, text:str):   self.result.add_block(f"<span class='ok'>{text}</span>")
     def _info(self, text:str): self.result.add_block(f"<span class='info'>{text}</span>")
     def _hint(self, text:str): self.result.add_block(f"<span class='dim'>{text}</span>")
@@ -354,7 +410,8 @@ class SubWindow(QWidget):
         if m is not None: parts.append(f"M{m}K")
         return " / ".join(map(str, parts))
 
-    # ------------ UI ------------
+
+    # ------------------------------------------ UI --------------------------------------------
     def _setup_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground); self.setFixedSize(800,800)
@@ -399,7 +456,8 @@ class SubWindow(QWidget):
         self.next_btn.clicked.connect(self._go_next); self.next_btn.setEnabled(False)
         btn_row.addStretch(); btn_row.addWidget(self.next_btn); lay.addLayout(btn_row)
 
-    # ------------ Train/Test split + Train + Eval ------------
+
+    # ---------------------------- select dataset + Train + Eval -------------------------------
     def _run_kmeans_and_train(self):
         # 저장 루트(쓰기 가능) 확보
         output_base = _resolve_output_root(self.output_root)
@@ -432,7 +490,7 @@ class SubWindow(QWidget):
 
             n_samples = len(srcs)
             if n_samples == 0:
-                self.progress.update(int(i/total*100))
+                # self.progress.update(int(i/total*100))
                 continue
 
             # 이 클래스에서 뽑을 개수 k
@@ -452,6 +510,7 @@ class SubWindow(QWidget):
                     shutil.copy2(src, dst)
                     self._train_originals.add(self._norm(src))
                     self._train_copies.add(self._norm(dst))
+                    self.train_samples.append((dst, label))
                 except Exception:
                     pass
 
@@ -469,9 +528,9 @@ class SubWindow(QWidget):
                     pass
 
             self._info(f"    → train {k} / test {len(srcs)-k}")
-            self.progress.update(int(i/total*100))
 
-        self.progress.update(100)
+        
+        self.progress.update(0)
 
         self.result.clear()
         self._ok("K-means selection completed.")
@@ -482,39 +541,64 @@ class SubWindow(QWidget):
             self._hint("No test images were available; accuracy cannot be computed.")
         self.result.add_hr()
 
-        # --- Train ---
+        # -------------------- Train -----------------------
         try:
-            self._info("Training on datasets/train …")
-            self.model.fit_from_root(self._train_dir)
-            self.model.save(os.path.join(save_root, MODEL_BASENAME))
-            self._ok("Training completed.")
+            self._info("Training Intellino …")
+
+            # 1) NeuronCells 인스턴스 생성
+            self.neuron_cells = NeuronCells(
+                number_of_neuron_cells=self.number_of_neuron_cells,
+                length_of_input_vector=self.length_of_input_vector,
+                measure="manhattan"
+            )
+            def _progress_cb(perc: int):
+                self.progress.update(perc)
+                QApplication.processEvents()
+            
+            # intellino 학습
+            train(
+                neuron_cells=self.neuron_cells,
+                train_samples=self.train_samples,
+                number_of_neuron_cells=self.number_of_neuron_cells,
+                length_of_input_vector=self.length_of_input_vector,
+                progress_callback=_progress_cb
+            )
         except Exception as e:
             self._err(f"Training failed: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
             return
 
-        # --- Eval on test ---
+        # -------------------- Eval on test ----------------------
         try:
-            if self._test_items:
+            if self._test_items and (self.neuron_cells is not None):
                 correct, total = 0, 0
                 for p, true_lab in self._test_items:
-                    vec = vectorize_like_training(p)  # 공통 전처리 래퍼 사용
-                    if vec is None:
+                    try:
+                        # intellino 추론
+                        pred_lab = infer(
+                            neuron_cells=self.neuron_cells,
+                            image_path=p,
+                            length_of_input_vector=self.length_of_input_vector,
+                        )
+                    except Exception:
+                        # 전처리 실패 등은 평가에서 스킵
                         continue
-                    pred_lab = self.model.predict(vec, top_k=1)[0][0]
+
                     total += 1
-                    if pred_lab == true_lab:
+                    # 문자열/정수 섞여도 비교되도록 문자열로 맞춰서 비교
+                    if str(pred_lab) == str(true_lab):
                         correct += 1
+
                 if total > 0:
                     acc = 100.0 * correct / total
                     self._last_accuracy = float(acc)
-                    # 실험 상태에 누적
                     EXPERIMENT_STATE.add_run(self._make_param_label(), float(acc))
 
-                    self.result.add_block("<b>Test evaluation</b>")
+                    self.result.add_block("<b>Test evaluation (Intellino)</b>")
                     self.result.add_block(
                         f"Accuracy: <b>{acc:.2f}%</b> "
-                        f"(<code>{correct}</code>/<code>{total}</code>) on <code>datasets/test/</code>"
+                        f"(<code>{correct}</code>/<code>{total}</code>) "
+                        f"on <code>datasets/test/</code> using Intellino"
                     )
                 else:
                     self._hint("Test dataset exists but no readable images; accuracy cannot be computed.")
@@ -529,7 +613,7 @@ class SubWindow(QWidget):
             self._err(f"Evaluation failed: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
 
-    # ---------- Inference ----------
+    # --------------------------- Inference ----------------------------
     def _browse_infer_file(self):
         start_dir = self._test_dir if (self._test_dir and os.path.isdir(self._test_dir)) else self._datasets_root
         title = "Select test image (only from datasets/test)" if INFER_ONLY_FROM_TEST else "Select image"
@@ -556,54 +640,55 @@ class SubWindow(QWidget):
     def _start_inference(self):
         image_path = self.infer.file_input.text().strip()
         if not image_path:
-            self._hint("Please choose an image file first."); return
-
-        if self._is_training_file(image_path):
-            QMessageBox.warning(self,"Not allowed","This file was used for training. Please choose a different file.")
+            self._hint("Please choose an image file first.")
             return
 
-        if self.model.vectors is None or not self.model.labels:
-            model_path = os.path.join(self._last_save_root, MODEL_BASENAME)
-            if os.path.exists(model_path):
-                try: self.model.load(model_path)
-                except Exception as e:
-                    self._err(f"Failed to load model: {e}")
-                    self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
-                    return
-            else:
-                self._err("No trained model. Run train first."); return
+        if self._is_training_file(image_path):
+            QMessageBox.warning(self, "Not allowed", "This file was used for training. Please choose a different file.")
+            return
 
+        # 1) Intellino NeuronCells 준비 (메모리 또는 pkl에서 로드)
+        if self.neuron_cells is None:
+            # temp 폴더에 저장된 pkl에서 로드
+            pkl_path = os.path.join("temp", "trained_neuron.pkl")
+            if not os.path.exists(pkl_path):
+                self._err("No trained Intellino model. Run train first.")
+                return
+            try:
+                with open(pkl_path, "rb") as f:
+                    self.neuron_cells = pickle.load(f)
+            except Exception as e:
+                self._err(f"Failed to load Intellino model: {e}")
+                self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+                return
+
+        # 2) Intellino infer() 호출
         try:
-            vec = preprocess_user_image(image_path)  # 공통 전처리 래퍼
-            top_labels, top_dists = self.model.predict(vec, top_k=3)
-            img_name = os.path.basename(image_path)
-            pred = top_labels[0]
+            pred = infer(
+                neuron_cells=self.neuron_cells,
+                image_path=image_path,
+                length_of_input_vector=self.length_of_input_vector,
+            )
 
-            self.result.add_block("🔎 <b>Inference</b>")
+            img_name = os.path.basename(image_path)
+
+            self.result.add_block(" <b>Inference (Intellino)</b>")
             if self._last_accuracy is not None:
-                self._hint(f"Last test accuracy (datasets/test): {self._last_accuracy:.2f}%")
+                self._hint(f"Last test accuracy (datasets/test, Intellino): {self._last_accuracy:.2f}%")
             self.result.add_block(f"Input: <code>{img_name}</code>")
             self.result.add_block(f"Prediction: <span class='pred'>{pred}</span>")
 
-            # 개별 추론 정오 즉시 표시 (datasets/test/<label>/... 에서 선택한 경우)
+            # datasets/test 안에서 고른 경우, 즉석 정오 판정
             test_root = os.path.realpath(self._test_dir) if self._test_dir else ""
             rp = os.path.realpath(image_path)
             if test_root and self._is_subpath(rp, test_root):
-                gt = os.path.basename(os.path.dirname(rp))  # 폴더명이 정답 라벨
-                ok = (pred == gt)
+                gt = os.path.basename(os.path.dirname(rp))  # 폴더명이 정답
+                ok = (str(pred) == str(gt))
                 self.result.add_block(
                     f"Ground truth: <b>{gt}</b> → {'Correct' if ok else 'Wrong'}"
                 )
 
-            rows = "".join(
-                f"<tr><td>{i}</td><td>{lab}</td><td>{dist:.3f}</td></tr>"
-                for i, (lab, dist) in enumerate(zip(top_labels, top_dists), start=1)
-            )
-            self.result.add_block(
-                f"<div class='dim' style='font-weight:600;margin-top:4px;margin-bottom:2px;'>Top-{len(top_labels)} nearest</div>"
-                f"<table class='grid'>"
-                f"<tr><th>Rank</th><th>Label</th><th>Distance</th></tr>{rows}</table>"
-            )
+            # SimpleNearestModel 때 쓰던 top-k 테이블은 Intellino에선 생략
         except Exception as e:
             self._err(f"Inference failed: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
@@ -624,11 +709,7 @@ class SubWindow(QWidget):
             pass
 
     def _go_next(self):
-        """
-        ★ 변경 포인트: 이전 창 스냅샷 대신 '흰색 오버레이'로 페이드아웃
-        → 새 창(ExperimentWindow) 위에 백색 위젯을 덮고 서서히 투명하게 만들어
-           이전 화면 텍스트가 비칠 여지를 없앰.
-        """
+        
         try:
             from custom_4 import ExperimentWindow as Window4
         except Exception as e:

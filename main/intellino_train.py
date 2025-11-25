@@ -85,13 +85,13 @@ def preprocess_user_image(image_path):
 
 def inference_debug_external(neuron_cells, vector, result_widget=None, top_n=5):
 
-    label_distances = defaultdict(list)  # 🔹 라벨별 거리 저장
+    label_distances = defaultdict(list)  # 라벨별 거리 저장
     for cell in neuron_cells.cells:
         d = manhattan_distance(vector, cell._vector)
         distances.append((d, cell.target))
-        label_distances[cell.target].append(d)  # 🔹 라벨별 그룹핑
+        label_distances[cell.target].append(d)  # 라벨별 그룹핑
     distances.sort(key=lambda x: x[0])
-    # 👉 Top-5 뉴런 출력
+    # Top-5 뉴런 출력
     if result_widget:
         result_widget.append("[DEBUG] Distance to neurons (Top-5):")
         for i, (dist, label) in enumerate(distances[:top_n]):
@@ -100,7 +100,7 @@ def inference_debug_external(neuron_cells, vector, result_widget=None, top_n=5):
         print("[DEBUG] Distance to neurons (Top-5):")
         for i, (dist, label) in enumerate(distances[:top_n]):
             print(f"  Top-{i+1}: label={label}, distance={dist:.2f}")
-    # 👉 라벨별 평균 거리 출력
+    # 라벨별 평균 거리 출력
     label_avg = {label: np.mean(dlist) for label, dlist in label_distances.items()}
     sorted_avg = sorted(label_avg.items(), key=lambda x: x[1])
     if result_widget:
