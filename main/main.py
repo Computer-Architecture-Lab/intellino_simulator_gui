@@ -8,6 +8,9 @@ from ui_mainwindow import Ui_MainWindow                 # GUI main window
 from existing_mode_window import SubWindow              # easymode window
 from custom_1 import Custom_1_Window                    # custom_1 window
 
+from utils.resource_utils import resource_path
+
+
 GLOBAL_FONT_QSS = """
 * {
     font-family: 'Inter', 'Pretendard', 'Noto Sans', 'Segoe UI',
@@ -16,25 +19,6 @@ GLOBAL_FONT_QSS = """
     font-weight: 500;
 }
 """
-
-def resource_path(relative_path: str) -> str:
-    """
-    PyInstaller로 빌드했을 때(_MEIPASS)와 개발 중(__file__ 기준) 모두에서
-    리소스 파일을 안정적으로 찾기 위한 경로 헬퍼.
-    - 기본: _MEIPASS(실행 중 임시 폴더) 또는 현재 파일 위치
-    - 보너스: 빌드 시 dest를 'main'으로 준 경우도 자동으로 커버
-    """
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)).resolve()
-    candidates = [
-        base / relative_path,            # dest='.' 로 넣은 경우
-        base / "main" / relative_path,  # dest='main' 으로 넣은 경우
-        base.parent / relative_path,    # 혹시 모를 상위 폴더 위치
-    ]
-    for c in candidates:
-        if c.exists():
-            return str(c)
-    # 못 찾으면 1순위 경로를 그대로 반환(디버깅 메시지용)
-    return str(candidates[0])
 
 
 class MainWindow(QMainWindow):

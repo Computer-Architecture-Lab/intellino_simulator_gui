@@ -1,4 +1,5 @@
-import sys, os
+import sys
+import os
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QTextBrowser,
@@ -6,76 +7,15 @@ from PySide2.QtWidgets import (
     QStyle,
 )
 from PySide2.QtCore import QPropertyAnimation, Qt, QSize
-    # QIntValidator 추가
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
+
 from custom_2 import launch_training_window
 
-# ──────────────────────────────────────────────
-# 리소스 경로 헬퍼: exe/개발 환경 모두에서 안전하게 파일 찾기
-def resource_path(name: str) -> str:
-    """
-    PyInstaller(onefile)로 빌드한 exe와 개발 중 파이썬 실행 둘 다에서
-    이미지/데이터 파일의 실제 경로를 찾는다.
-    - 빌드 시 --add-data "...;main" 구조를 우선적으로 탐색한다.
-    """
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidates = []
-
-    # 1) onefile 실행 시: PyInstaller가 압축을 푼 임시 폴더
-    if hasattr(sys, "_MEIPASS"):
-        base = sys._MEIPASS
-        candidates += [
-            os.path.join(base, name),              # ;.
-            os.path.join(base, "main", name),      # ;main  ← 우리가 쓰는 구조
-        ]
-
-    # 2) 개발 환경: 소스 파일 기준
-    candidates += [
-        os.path.join(here, name),
-        os.path.join(here, "main", name),
-    ]
-
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    # 마지막 안전장치
-    return candidates[0] if candidates else name
-# ──────────────────────────────────────────────
+from utils.resource_utils import resource_path
+from utils.ui_common import TitleBar, BUTTON_STYLE, TOGGLE_BUTTON_STYLE
 
 # 두 번째 이미지와 같은 큰 테두리 높이(필요시 140~180 사이에서 조정)
 SECOND_STYLE_FIXED_HEIGHT = 160
-
-# -----------------------------
-# 전역 글꼴(사진 느낌: 산세리프, Medium)
-
-# 공통 버튼 스타일
-BUTTON_STYLE = """
-    QPushButton {
-        background-color: #ffffff;
-        border: 1px solid #ccc;
-        border-radius: 10px;
-        padding: 5px;
-    }
-    QPushButton:hover { background-color: #e9ecef; }
-    QPushButton:pressed { background-color: #adb5bd; color: white; }
-"""
-
-# 칩/토글 버튼(라운드 사각형)
-TOGGLE_BUTTON_STYLE = """
-    QPushButton {
-        background-color: #ffffff;
-        border: 1px solid #C9C9C9;
-        border-radius: 10px;
-        padding: 6px 14px;
-    }
-    QPushButton:hover { background-color: #F2F4F6; }
-    QPushButton:checked {
-        background-color: #ffffff;
-        color: #000000;
-        border: 2px solid #212529;
-    }
-    QPushButton:pressed { background-color: #E9ECEF; }
-"""
 
 # ── GroupBox 스타일 ──
 GROUPBOX_WITH_FLOATING_TITLE = """
@@ -94,64 +34,6 @@ GROUPBOX_WITH_FLOATING_TITLE = """
         color: #000000;
     }
 """
-
-# -----------------------------
-# 0) TitleBar
-class TitleBar(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._parent = parent
-        self.setFixedHeight(56)
-        self.setStyleSheet(
-            "background-color: #f1f3f5;"
-            "border-top-left-radius: 15px; border-top-right-radius: 15px;"
-        )
-        self.setAttribute(Qt.WA_StyledBackground, True)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 0, 15, 0)
-
-        logo_label = QLabel()
-        logo_png = resource_path("intellino_TM_transparent.png")
-        pm = QPixmap(logo_png)
-        if pm.isNull():
-            logo_label.setText("intellino")
-            logo_label.setStyleSheet("font-weight:600;")
-        else:
-            pixmap = pm.scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            logo_label.setPixmap(pixmap)
-
-        close_btn = QPushButton()
-        home_icon_path = resource_path("home.png")
-        icon = QIcon(home_icon_path)
-        if icon.isNull():
-            icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
-        close_btn.setIcon(icon)
-        close_btn.setIconSize(QSize(24, 24))
-        close_btn.setFixedSize(34, 34)
-        close_btn.setStyleSheet("""
-            QPushButton { border: none; background-color: transparent; }
-            QPushButton:hover { background-color: #dee2e6; border-radius: 17px; }
-        """)
-        close_btn.clicked.connect(lambda: self._parent and self._parent.close())
-
-        layout.addWidget(logo_label)
-        layout.addStretch()
-        layout.addWidget(close_btn)
-
-        self._offset = None
-
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            self._offset = event.pos()
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if self._offset is not None and event.buttons() == Qt.LeftButton and self._parent:
-            self._parent.move(self._parent.pos() + event.pos() - self._offset)
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        self._offset = None
-
 
 # -----------------------------
 # 공통 입력 박스 베이스(2~4)
@@ -178,7 +60,6 @@ class IntegerInputGroup(QGroupBox):
                 padding: 5px 10px;
                 border: 1px solid #ccc;
                 border-radius: 8px;
-                
             }
         """)
 
@@ -305,13 +186,9 @@ class MemorySizeSection(QGroupBox):
         self.output_box.setStyleSheet("""
             QTextBrowser {
                 border: 1px solid #ccc;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                border-bottom-left-radius: 8px;
-                border-bottom-right-radius: 8px;
+                border-radius: 8px;
                 padding: 8px;
                 background-color: #f8f9fa;
-                
             }
         """)
         self.output_box.setFixedHeight(SECOND_STYLE_FIXED_HEIGHT)
@@ -399,7 +276,6 @@ class Custom_1_Window(QWidget):
         self.next_btn.setFixedSize(100, 40)
         self.next_btn.setStyleSheet("""
             QPushButton {
-                
                 border: 1px solid #888;
                 border-radius: 8px;
                 background-color: #fefefe;
@@ -475,8 +351,6 @@ class Custom_1_Window(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    #app.setStyleSheet(GLOBAL_FONT_QSS)
-
     window = Custom_1_Window()
     window.show()
     sys.exit(app.exec_())

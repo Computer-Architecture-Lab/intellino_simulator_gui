@@ -2,29 +2,19 @@
 import sys, os, subprocess
 from functools import partial
 
-def resource_path(name: str) -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidates = []
+from PySide2.QtWidgets import (
+    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
+    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea,
+    QMessageBox, QSizePolicy
+)
+from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
+from PySide2.QtCore import Qt, QSize, Signal
 
-    # 1) PyInstaller onefile 실행 시
-    if hasattr(sys, "_MEIPASS"):
-        base = sys._MEIPASS
-        candidates += [
-            os.path.join(base, name),          # ;.
-            os.path.join(base, "main", name),  # ;main
-        ]
+from custom_3 import SubWindow as Window3
+from path_utils import get_dirs
 
-    # 2) 개발 환경
-    candidates += [
-        os.path.join(here, name),
-        os.path.join(here, "main", name),
-    ]
-
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-
-    return candidates[0]  # fallback
+from utils.resource_utils import resource_path
+from utils.ui_common import BUTTON_STYLE
 
 ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
 LOGO_PATH = resource_path("intellino_TM_transparent.png")
@@ -38,16 +28,6 @@ QMessageBox {
     font-size: 14px;
 }
 """
-
-from PySide2.QtWidgets import (
-    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QLineEdit, QGraphicsDropShadowEffect, QFileDialog, QScrollArea,
-    QMessageBox, QSizePolicy
-)
-from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
-from PySide2.QtCore import Qt, QSize, Signal
-from custom_3 import SubWindow as Window3
-from path_utils import get_dirs
 
 # ---------------------------------------------------------------------
 GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
@@ -72,18 +52,7 @@ GROUPBOX_WITH_FLOATING_TITLE_FALLBACK = """
 CUSTOM_IMAGE_ROOT, BASE_NUMBER_DIR, KMEANS_SELECTED_DIR = get_dirs(__file__)
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
-BUTTON_STYLE = """
-    QPushButton {
-        background-color: #ffffff;
-        border: 1px solid #ccc;
-        border-radius: 10px;
-        padding: 5px;
-        font-weight: bold;
-        font-size: 14px;
-    }
-    QPushButton:hover { background-color: #e9ecef; }
-    QPushButton:pressed { background-color: #adb5bd; color: white; }
-"""
+BUTTON_STYLE_LOCAL = BUTTON_STYLE  # alias (필요 시 커스터마이징 가능)
 
 
 # 경로 정규화/비교 유틸 ----------------------------------------------------
@@ -93,14 +62,6 @@ def _canon_path(p: str) -> str:
         return os.path.normcase(os.path.realpath(os.path.abspath(p)))
     except Exception:
         return os.path.normcase(os.path.abspath(p))
-
-
-def _same_dir(a: str, b: str) -> bool:
-    """가능하면 samefile, 아니면 정규화 문자열로 비교"""
-    try:
-        return os.path.samefile(a, b)
-    except Exception:
-        return _canon_path(a) == _canon_path(b)
 # ---------------------------------------------------------------------
 
 

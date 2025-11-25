@@ -3,44 +3,14 @@
 
 import sys, os, shutil, datetime, numpy as np, traceback, pickle, cv2
 from PIL import Image  # (남겨두지만 학습·평가·추론은 모두 OpenCV 기반 전처리 사용)
+from utils.resource_utils import resource_path
+from utils.image_preprocess import preprocess_digit_image
+from utils.ui_common import TitleBar, BUTTON_STYLE
+
 
 # 추론 경로 제어(기본 False: 어느 경로든 허용, 단 학습 파일 차단)
 INFER_ONLY_FROM_TEST = False
 
-# ──────────────────────────────────────────────
-# exe/개발 환경 공통 리소스 경로 헬퍼
-def resource_path(name: str) -> str:
-    """
-    PyInstaller(onefile) 실행 시 임시 폴더(sys._MEIPASS)와
-    개발 환경(__file__ 기준)을 모두 커버.
-    빌드 때 --add-data "...;main" 구조를 우선 탐색한다.
-    """
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidates = []
-
-    # 1) onefile 실행 시: PyInstaller가 압축을 풀어 둔 임시 폴더
-    if hasattr(sys, "_MEIPASS"):
-        base = sys._MEIPASS
-        candidates += [
-            os.path.join(base, name),              # ;.
-            os.path.join(base, "main", name),      # ;main  ← 우리가 쓰는 구조
-        ]
-
-    # 2) 개발 환경: 소스 파일 기준
-    candidates += [
-        os.path.join(here, name),
-        os.path.join(here, "main", name),
-    ]
-
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    # 마지막 안전장치
-    return candidates[0] if candidates else name
-# ──────────────────────────────────────────────
-
-LOGO_PATH      = resource_path("intellino_TM_transparent.png")
-HOME_ICON_PATH = resource_path("home.png")
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -61,7 +31,7 @@ CUSTOM_IMAGE_ROOT, NUMBER_IMAGE_DIR, DEFAULT_OUTPUT_ROOT = get_dirs(__file__)
 
 # exe에서 경로가 없을 때(또는 구조가 다른 경우) 보정 시도
 try:
-    main_dir = os.path.dirname(LOGO_PATH)  # 보통 '_MEIPASS/main'
+    main_dir = os.path.dirname(resource_path("intellino_TM_transparent.png"))  # 보통 '_MEIPASS/main'
     if not os.path.isdir(CUSTOM_IMAGE_ROOT):
         cand = os.path.join(main_dir, "custom_image")
         if os.path.isdir(cand):
@@ -106,78 +76,88 @@ def _resolve_output_root(preferred: str) -> str:
     os.makedirs(fallback, exist_ok=True)
     return fallback
 
-MODEL_BASENAME = "custom_model.pkl"
+# K-MEANS clustering function
+def kmeans_clustering(vectors: np.ndarray, num_select: int,
+                          max_iter: int = 15, random_state: int = 0):
+    """
+    vectors : (N, D) float32 배열 (각 이미지 벡터)
+    num_select : 뽑고 싶은 샘플 개수 (클러스터 개수)
+    return : 선택된 인덱스 리스트 (길이 num_select)
+    """
+    if vectors is None or vectors.size == 0:
+        return []
 
-BUTTON_STYLE = """
-    QPushButton {
-        background-color:#ffffff; border:1px solid #ccc; border-radius:10px;
-        padding:6px 12px; font-weight:600; font-size:13px;
-    }
-    QPushButton:hover { background-color:#e9ecef; }
-    QPushButton:pressed { background-color:#adb5bd; color:white; }
-"""
+    n_samples = vectors.shape[0]
+    if num_select >= n_samples:
+        # 전체가 필요한 개수 이하이면 그냥 전부 사용
+        return list(range(n_samples))
+
+    k = num_select
+    rs = np.random.RandomState(random_state)
+
+    # 1) 초기 centroid: 임의로 k개 골라 사용
+    init_idx = rs.choice(n_samples, size=k, replace=False)
+    centroids = vectors[init_idx].copy()
+
+    labels = np.zeros(n_samples, dtype=np.int32)
+
+    for _ in range(max_iter):
+        # 2) 각 샘플을 가장 가까운 centroid에 할당 (L2 거리)
+        dists = np.linalg.norm(
+            vectors[:, None, :] - centroids[None, :, :],
+            axis=2
+        )  # shape (N, k)
+        new_labels = dists.argmin(axis=1)
+
+        if np.array_equal(new_labels, labels):
+            labels = new_labels
+            break
+
+        labels = new_labels
+
+        # 3) centroid 업데이트 (각 클러스터 평균)
+        for c in range(k):
+            mask = (labels == c)
+            if not np.any(mask):
+                # 비어 있는 클러스터는 임의 샘플 하나로 재초기화
+                centroids[c] = vectors[rs.randint(0, n_samples)]
+            else:
+                centroids[c] = vectors[mask].mean(axis=0)
+
+    # 4) 각 클러스터에서 centroid에 가장 가까운 샘플 1개씩 대표로 선택
+    chosen = []
+    for c in range(k):
+        mask = (labels == c)
+        if not np.any(mask):
+            continue
+        sub_idx = np.where(mask)[0]
+        sub_vecs = vectors[sub_idx]
+        diff = sub_vecs - centroids[c]
+        d2 = np.einsum("ij,ij->i", diff, diff)  # 제곱거리
+        best_local = sub_idx[d2.argmin()]
+        chosen.append(int(best_local))
+
+    # 혹시 어떤 이유로 k개 못 뽑았으면 나머지는 아무거나 채우기
+    if len(chosen) < k:
+        remain = [i for i in range(n_samples) if i not in chosen]
+        chosen += remain[: (k - len(chosen))]
+
+    return chosen
+
+MODEL_BASENAME = "custom_model.pkl"
 
 # ---------------------------
 # 전처리(단일 파이프라인)
-def preprocess_image(image_path: str) -> np.ndarray:
-    """
-    학습/평가/추론 공통 전처리:
-    1) Grayscale → GaussianBlur(3x3)
-    2) OTSU 이진화(필요시 반전)
-    3) 유효 픽셀 바운딩 박스 크롭
-    4) 긴 변 기준 20px로 비율 유지 리사이즈
-    5) 28x28 중앙 배치(검은 바탕)
-    출력: (784,) float32 [0,1]
-    """
-    img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError(f"Unable to open image: {image_path}")
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (3,3), 0)
-    # OTSU는 THRESH_BINARY와 조합하는 것이 안전
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    # 배경이 흰색이 되도록 반전(필요시)
-    # 평균이 밝으면(>127) 배경이 흰색, 글자가 검은색일 가능성이 큼.
-    # 여기서는 글자(전경)를 흰색으로 맞추기 위해 반전.
-    if np.mean(binary) > 127:
-        binary = 255 - binary
-
-    coords = cv2.findNonZero(binary)
-    if coords is None:
-        cropped = binary
-    else:
-        x, y, w, h = cv2.boundingRect(coords)
-        cropped = binary[y:y+h, x:x+w]
-
-    target = 20
-    h, w = cropped.shape[:2]
-    if w == 0 or h == 0:
-        resized = np.zeros((20,20), dtype=np.uint8)
-    else:
-        if w > h:
-            new_w, new_h = target, max(1, int(h * target / w))
-        else:
-            new_h, new_w = target, max(1, int(w * target / h))
-        resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
-
-    canvas = np.zeros((28,28), dtype=np.uint8)
-    yo = (28 - resized.shape[0]) // 2
-    xo = (28 - resized.shape[1]) // 2
-    canvas[yo:yo+resized.shape[0], xo:xo+resized.shape[1]] = resized
-
-    return (canvas.astype(np.float32) / 255.0).reshape(-1)
+# → utils.image_preprocess.preprocess_digit_image 를 사용합니다.
 
 # ---------------------------
-# 데이터 유틸 (전처리 통일 버전)
 def load_images_from_dir(dir_path: str):
     files = [os.path.join(dir_path, f) for f in sorted(os.listdir(dir_path))
              if str(f).lower().endswith(IMG_EXTS)]
     X, keep = [], []
     for p in files:
         try:
-            vec = preprocess_image(p)  # ← 통일
+            vec = preprocess_digit_image(p)
             X.append(vec); keep.append(os.path.abspath(p))
         except Exception:
             pass
@@ -185,16 +165,18 @@ def load_images_from_dir(dir_path: str):
         return np.empty((0,784), dtype=np.float32), []
     return np.stack(X, axis=0), keep
 
+
 def vectorize_like_training(path: str):
-    # 호환성을 위해 함수 유지하되 공통 전처리 사용
+    """과거 함수명 유지: 공통 숫자 전처리 래퍼"""
     try:
-        return preprocess_image(path)
+        return preprocess_digit_image(path)
     except Exception:
         return None
 
 # 과거 함수명 유지(외부 코드 의존 대비)
 def preprocess_user_image(image_path: str) -> np.ndarray:
-    return preprocess_image(image_path)
+    """공통 숫자 전처리 래퍼"""
+    return preprocess_digit_image(image_path)
 
 # ---------------------------
 # 간단 최근접-이웃 모델(L1)
@@ -238,51 +220,6 @@ class SimpleNearestModel:
 
 # ---------------------------
 # UI 구성 요소
-class TitleBar(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._parent = parent
-        self.setFixedHeight(50)
-        self.setStyleSheet(
-            "background-color:#f1f3f5;"
-            "border-top-left-radius:15px; border-top-right-radius:15px;"
-        )
-        self.setAttribute(Qt.WA_StyledBackground, True)
-
-        h = QHBoxLayout(self); h.setContentsMargins(15,0,15,0)
-        logo = QLabel()
-        pm = QPixmap(LOGO_PATH)
-        if pm.isNull():
-            logo.setText("intellino"); logo.setStyleSheet("font-weight:600;")
-        else:
-            logo.setPixmap(pm.scaled(65,65, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-
-        home = QPushButton()
-        icon = QIcon(HOME_ICON_PATH)
-        if icon.isNull():
-            icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
-        home.setIcon(icon)
-        home.setIconSize(QSize(24,24))
-        home.setFixedSize(34,34)
-        home.setStyleSheet("QPushButton{border:none;background:transparent;} "
-                           "QPushButton:hover{background:#dee2e6; border-radius:17px;}")
-        home.clicked.connect(self._on_home)
-
-        h.addWidget(logo); h.addStretch(); h.addWidget(home)
-        self._offset = None
-
-    def _on_home(self):
-        #app = QApplication.instance()
-        #if app: app.setStyleSheet("")
-        if self._parent: self._parent.close()
-
-    def mousePressEvent(self, e: QMouseEvent):
-        if e.button() == Qt.LeftButton: self._offset = e.pos()
-    def mouseMoveEvent(self, e: QMouseEvent):
-        if self._offset is not None and e.buttons()==Qt.LeftButton and self._parent:
-            self._parent.move(self._parent.pos() + e.pos() - self._offset)
-    def mouseReleaseEvent(self, e: QMouseEvent):
-        self._offset = None
 
 class ProgressSection(QWidget):
     def __init__(self, title="7. Train"):
@@ -493,13 +430,19 @@ class SubWindow(QWidget):
             # 로깅: 라벨-디렉터리 매핑 및 수량
             self._info(f"[{i}] label='{label}' dir='{dir_path}' → images={len(srcs)}")
 
-            if len(srcs) == 0:
-                self.progress.update(int(i/total*100)); continue
+            n_samples = len(srcs)
+            if n_samples == 0:
+                self.progress.update(int(i/total*100))
+                continue
 
-            k = min(self.samples_per_class, len(srcs))
-            chosen_idx  = list(range(k))   # (참고) 실제 K-means 미적용: 앞 k장 선택
-            chosen_set  = set(chosen_idx)
+            # 이 클래스에서 뽑을 개수 k
+            k = min(self.samples_per_class, n_samples)
 
+            # K-means로 대표 인덱스 선택
+            chosen_idx = kmeans_clustering(X, k)
+            chosen_set = set(chosen_idx)
+
+            # k-means 선별된 train data 복사
             dst_train_label = os.path.join(train_root, label)
             os.makedirs(dst_train_label, exist_ok=True)
             for r, idx in enumerate(chosen_idx, start=1):
@@ -555,7 +498,7 @@ class SubWindow(QWidget):
             if self._test_items:
                 correct, total = 0, 0
                 for p, true_lab in self._test_items:
-                    vec = vectorize_like_training(p)  # 공통 전처리로 통일
+                    vec = vectorize_like_training(p)  # 공통 전처리 래퍼 사용
                     if vec is None:
                         continue
                     pred_lab = self.model.predict(vec, top_k=1)[0][0]
@@ -631,7 +574,7 @@ class SubWindow(QWidget):
                 self._err("No trained model. Run train first."); return
 
         try:
-            vec = preprocess_user_image(image_path)  # 공통 전처리
+            vec = preprocess_user_image(image_path)  # 공통 전처리 래퍼
             top_labels, top_dists = self.model.predict(vec, top_k=3)
             img_name = os.path.basename(image_path)
             pred = top_labels[0]

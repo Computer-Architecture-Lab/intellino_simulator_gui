@@ -11,27 +11,9 @@ import cv2
 
 from intellino.core.neuron_cell import NeuronCells
 
-
-# ─────────────────────────────────────
-# PyInstaller(onefile) + 개발환경 겸용 경로 헬퍼
-# ─────────────────────────────────────
-def resource_path(name: str) -> str:
-    """
-    onefile 실행 시:  sys._MEIPASS 기준
-    개발 환경 실행 시: 이 파일(__file__) 기준
-    두 경우 모두에서 name 파일을 찾도록 함.
-    """
-    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-    candidates = [
-        os.path.join(base, name),                         # e.g. trained_neuron.pkl
-        os.path.join(base, "main", name),                 # onefile에서 ;main 구조
-        os.path.join(os.path.dirname(__file__), name),    # 개발 환경
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    # 못 찾으면 일단 첫 번째 후보 리턴
-    return candidates[0]
+# 공통 유틸
+from utils.resource_utils import resource_path
+from utils.image_preprocess import preprocess_digit_image
 
 
 # 미리 학습해 둔 모델 파일 (PyInstaller에서 같이 패키징됨)
@@ -43,7 +25,7 @@ RESIZE_SIZE = int(math.sqrt(LENGTH_OF_INPUT_VECTOR))
 
 
 # ─────────────────────────────────────
-# 1. GUI에서 사용하는 "가짜 학습" 함수
+# 1. GUI에서 사용하는 학습 함수
 # ─────────────────────────────────────
 def train(progress_cb=None, log_cb=None):
     """
@@ -51,8 +33,6 @@ def train(progress_cb=None, log_cb=None):
     - 실제 학습은 하지 않고,
     - progress_cb 를 통해 0 → 100% 까지 게이지만 채워줌.
     - log_cb 를 통해 텍스트 로그만 출력.
-
-    기존 학습 속도와 비슷하게 보이도록 step 수 / 슬립 시간 조절 가능.
     """
 
     # 로그 출력 (기존 "MNIST 학습을 시작합니다..." 역할)
@@ -79,7 +59,7 @@ def train(progress_cb=None, log_cb=None):
             except Exception:
                 pass
 
-        # 너무 순식간에 끝나지 않도록 약간 딜레이
+        # 딜레이
         time.sleep(SLEEP_SEC)
 
     # 마지막 로그
@@ -95,54 +75,10 @@ def train(progress_cb=None, log_cb=None):
 # ─────────────────────────────────────
 def preprocess_user_image(image_path: str) -> np.ndarray:
     """
-    기존에 사용하던 OpenCV 기반 전처리 그대로 유지:
-      1) BGR → Gray
-      2) Gaussian Blur
-      3) OTSU threshold + 필요시 반전
-      4) 숫자 영역 bounding box로 crop
-      5) 긴 변 기준 20px로 리사이즈 (비율 유지)
-      6) 28x28 중앙 배치
-      7) flatten → (784,) float32
+    utils.image_preprocess.preprocess_digit_image 를 그대로 사용하는 래퍼.
+    (custom_3와 동일한 전처리 파이프라인 공유)
     """
-    image = cv2.imread(image_path)
-    if image is None:
-        raise ValueError(f"Unable to mount image: {image_path}")
-
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-
-    # OTSU threshold
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_OTSU)
-
-    # 배경이 흰색이고 숫자가 검정이면 MNIST 스타일로 맞추기 위해 반전
-    if np.mean(binary) > 127:
-        binary = 255 - binary
-
-    # 숫자 영역만 crop
-    coords = cv2.findNonZero(binary)
-    x, y, w, h = cv2.boundingRect(coords)
-    cropped = binary[y:y + h, x:x + w]
-
-    # 긴 변 기준 20px로 리사이즈
-    target_size = 20
-    if w > h:
-        new_w = target_size
-        new_h = int(h * target_size / w)
-    else:
-        new_h = target_size
-        new_w = int(w * target_size / h)
-
-    resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
-
-    # 28x28 중앙 배치
-    padded = np.zeros((28, 28), dtype=np.uint8)
-    x_offset = (28 - new_w) // 2
-    y_offset = (28 - new_h) // 2
-    padded[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized
-
-    # (784,) float32 벡터로 변환
-    flatten = padded.reshape(1, -1).squeeze().astype(np.float32)
-    return flatten
+    return preprocess_digit_image(image_path)
 
 
 def infer_image(image_path: str) -> int:

@@ -1,6 +1,5 @@
 import sys
 import os
-from pathlib import Path
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -14,29 +13,10 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib as mpl
 
-# ──────────────────────────────────────────────
-# exe/개발 환경 공통 리소스 경로 헬퍼
-def resource_path(relative_path: str) -> str:
-    """
-    PyInstaller(onefile) 실행 시 임시 폴더(sys._MEIPASS)와
-    개발 환경(__file__ 기준)을 모두 커버.
-    빌드 때 dest가 '.' 또는 'main'이어도 자동 탐색.
-    """
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)).resolve()
-    candidates = [
-        base / relative_path,            # --add-data "...;."
-        base / "main" / relative_path,  # --add-data "...;main"
-        base.parent / relative_path,    # 혹시 상위 폴더에 있을 때
-    ]
-    for c in candidates:
-        if c.exists():
-            return str(c)
-    return str(candidates[0])  # 못 찾으면 1순위 경로 반환(디버깅용)
-# ──────────────────────────────────────────────
+# 공통 유틸 import
+from utils.resource_utils import resource_path
+from utils.ui_common import TitleBar, BUTTON_STYLE
 
-# 리소스 경로
-LOGO_PATH = resource_path("intellino_TM_transparent.png")
-HOME_ICON_PATH = resource_path("home.png")
 
 # ── 실험 상태 전역 ─────────────────────────────────────────
 class ExperimentState:
@@ -61,80 +41,9 @@ class ExperimentState:
         accs   = [float(ac) for _, ac in self.runs]
         return labels, accs
 
+
 EXPERIMENT_STATE = ExperimentState()
 # ───────────────────────────────────────────────────────────
-
-# 공통 버튼 스타일
-BUTTON_STYLE = """
-    QPushButton {
-        background-color: #ffffff;
-        border: 1px solid #ccc;
-        border-radius: 10px;
-        padding: 6px 12px;
-        font-weight: bold;
-        font-size: 13px;
-    }
-    QPushButton:hover { background-color: #e9ecef; }
-    QPushButton:pressed { background-color: #adb5bd; color: white; }
-"""
-
-# ── 타이틀 바 ──
-class TitleBar(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._parent = parent
-        self.setFixedHeight(50)
-        self.setStyleSheet(
-            "background-color: #f1f3f5; "
-            "border-top-left-radius: 15px; border-top-right-radius: 15px;"
-        )
-        self.setAttribute(Qt.WA_StyledBackground, True)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 0, 15, 0)
-
-        logo_label = QLabel()
-        pm = QPixmap(LOGO_PATH)
-        if pm.isNull():
-            logo_label.setText("intellino")
-            logo_label.setStyleSheet("font-weight:600;")
-        else:
-            pix = pm.scaled(65, 65, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            logo_label.setPixmap(pix)
-
-        home_btn = QPushButton()
-        home_btn.setIcon(QIcon(HOME_ICON_PATH))
-        home_btn.setIconSize(QSize(24, 24))
-        home_btn.setFixedSize(34, 34)
-        home_btn.setStyleSheet("""
-            QPushButton { border: none; background-color: transparent; }
-            QPushButton:hover { background-color: #dee2e6; border-radius: 17px; }
-        """)
-        home_btn.clicked.connect(self._on_home_clicked)
-
-        layout.addWidget(logo_label)
-        layout.addStretch()
-        layout.addWidget(home_btn)
-
-        self._offset = None
-
-    def _on_home_clicked(self):
-        #app = QApplication.instance()
-        #if app:
-        #    app.setStyleSheet("")
-        if self._parent:
-            self._parent.close()
-
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            self._offset = event.pos()
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if self._offset is not None and event.buttons() == Qt.LeftButton and self._parent:
-            self._parent.move(self._parent.pos() + event.pos() - self._offset)
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        self._offset = None
 
 
 # ── Matplotlib 캔버스 ──
