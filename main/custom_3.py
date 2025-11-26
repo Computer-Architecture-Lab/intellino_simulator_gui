@@ -14,9 +14,9 @@ from PySide2.QtWidgets import (
     QGroupBox, QGraphicsDropShadowEffect, QSizePolicy, QGraphicsOpacityEffect,
     QLineEdit, QFileDialog, QProgressBar, QTextBrowser, QMessageBox, QStyle
 )
-from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor, QTextCursor
+from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor, QTextCursor, QPainter, QPen, QBrush, QFont
 from PySide2.QtCore import Qt, QSize, QTimer, QPropertyAnimation, QEasingCurve
-from path_utils import get_dirs
+from utils.path_utils import get_dirs
 
 from intellino.core.neuron_cell import NeuronCells
 # 실험 상태 전역 객체(커스텀4에서 정의)
@@ -316,24 +316,225 @@ class ResultView(QTextBrowser):
     def add_hr(self):
         self.add_block("<div class='hr'></div>")
 
+
+class BarChartWidget(QWidget):
+    """
+    간단한 막대 그래프 위젯
+    - x축: label 리스트 (S 값, samples per class)
+    - y축: value 리스트 (accuracy %, 값이 없을 때는 None)
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._labels = []
+        self._values = []
+        self.setMinimumHeight(180)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def set_data(self, labels, values):
+        # labels: ["2","4","6","8","10"] 형태
+        # values: [정확도 or None, ...] (len == len(labels))
+        self._labels = list(labels)
+        self._values = list(values)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # 그래프를 약간 아래로 내리기 위해 top=20, bottom=25 정도로 조정
+        rect = self.rect().adjusted(40, 20, -20, -25)
+        painter.fillRect(self.rect(), QColor(255, 255, 255))
+
+        # y축 범위는 항상 0 ~ 100 고정
+        min_val = 0.0
+        max_val = 100.0
+
+        # 축 그리기 기본 설정
+        axis_pen = QPen(QColor(80, 80, 80))
+        axis_pen.setWidth(1)
+        painter.setPen(axis_pen)
+
+        x0 = rect.left()
+        y0 = rect.bottom()
+        x1 = rect.right()
+        y1 = rect.top()
+
+        # y축 (0 ~ 100)
+        painter.drawLine(x0, y0, x0, y1)
+        # x축
+        painter.drawLine(x0, y0, x1, y0)
+
+        # y축 눈금(0, 100)
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+        painter.drawText(x0 - 30, y0 + 2, 28, 12, Qt.AlignRight | Qt.AlignVCenter, "0")
+        painter.drawText(x0 - 30, y1 - 6, 28, 12, Qt.AlignRight | Qt.AlignVCenter, "100")
+
+        n = len(self._labels)
+        if n == 0:
+            return
+
+        bar_space = rect.width() / max(n, 1)
+        bar_width = bar_space * 0.5
+
+        # x축 라벨(S 값)
+        painter.setPen(QPen(QColor(60, 60, 60)))
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+
+        for i, label in enumerate(self._labels):
+            cx = x0 + (i + 0.5) * bar_space
+            text = f"S={label}"
+            painter.drawText(cx - 20, y0 + 4, 40, 16, Qt.AlignHCenter | Qt.AlignTop, text)
+
+        # 막대 및 퍼센트 텍스트 그리기
+        bar_brush = QBrush(QColor(59, 130, 246))  # 파란색 계열
+
+        for i, (label, val) in enumerate(zip(self._labels, self._values)):
+            if val is None:
+                continue  # 데이터 없는 S
+
+            # 값에 비례한 높이 (0~100 기준)
+            ratio = (val - min_val) / (max_val - min_val) if max_val > min_val else 0.0
+            ratio = max(0.0, min(1.0, ratio))
+            h = ratio * rect.height()
+
+            cx = x0 + (i + 0.5) * bar_space
+            top = y0 - h
+            left = cx - bar_width / 2
+
+            # 막대
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(bar_brush)
+            painter.drawRect(left, top, bar_width, h)
+
+            # ✅ 막대 위에 퍼센트 텍스트 (좌우 안 잘리게 bar_space 기준으로 넓게)
+            painter.setPen(QPen(QColor(30, 30, 30)))
+            font = painter.font()
+            font.setPointSize(8)
+            painter.setFont(font)
+            txt = f"{val:.1f}%"
+
+            text_width = bar_space * 0.9
+            text_left = cx - text_width / 2
+            painter.drawText(
+                text_left,
+                top - 16,
+                text_width,
+                14,
+                Qt.AlignHCenter | Qt.AlignBottom,
+                txt,
+            )
+
+        # ✅ y축 단위 라벨 "A"
+        #   - 살짝 왼쪽(x0-25), 살짝 위(y1+10) 쪽으로 조정
+        painter.setPen(QPen(QColor(60, 60, 60)))
+        font = painter.font()
+        font.setPointSize(9)
+        painter.setFont(font)
+        painter.drawText(
+            x0 - 25,   # 더 왼쪽
+            y1 + 10,   # 약간 위로
+            20,
+            16,
+            Qt.AlignRight | Qt.AlignVCenter,
+            "A",
+        )
+
+
+
+class ExperimentGraphSection(QWidget):
+    """
+    6. Experiment graph
+    - 벡터 길이별(64,128,256,512) × samples_per_class(2,4,6,8,10) 정확도 표시
+    - 막대 그래프로 표시 (표 대신)
+    - x축: S (samples per class), y축: accuracy (%)
+    """
+    def __init__(self):
+        super().__init__()
+        g = QGroupBox("6. Experiment graph")
+        g.setStyleSheet(
+            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;"
+            "margin-top:10px;padding:10px;}"
+            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
+        )
+
+        main_layout = QVBoxLayout(self)
+        main_layout.addWidget(g)
+
+        inner = QVBoxLayout()
+        g.setLayout(inner)
+
+        from PySide2.QtWidgets import QGridLayout
+        grid = QGridLayout()
+        self.graph_boxes = {}  # vec_len -> BarChartWidget
+
+        vecs = [64, 128, 256, 512]
+        for idx, v in enumerate(vecs):
+            box = QGroupBox(f"Vector length = {v}")
+            box_layout = QVBoxLayout(box)
+
+            chart = BarChartWidget()
+            chart.setMinimumHeight(200)  # 세로축 더 크게
+            chart.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            box_layout.addWidget(chart)
+            self.graph_boxes[v] = chart
+
+            r = idx // 2
+            c = idx % 2
+            grid.addWidget(box, r, c)
+
+        inner.addLayout(grid)
+
+        # 아래쪽 로그(문자 결과 창)는 화면에서 제거
+        # 내부 로깅용으로만 숨겨진 ResultView 유지
+        self.log_view = ResultView()
+        self.log_view.setVisible(False)  # UI에는 표시하지 않음
+
+    def update_graph(self, results: dict, vec_lengths, k_list):
+        """
+        results[(vec_len, k)] = accuracy(%)
+
+        - 무조건 S = 2,4,6,8,10 다섯 개 기준으로 x축 폭을 맞춘다.
+        - 각 vec_len 그래프마다 S 라벨은 항상 5개가 다 보이게 하고,
+          해당 S에 대한 결과가 없으면 value 는 None으로 둔다.
+        """
+        all_s = [2, 4, 6, 8, 10]  # S 값 다섯 개 고정
+
+        for v in vec_lengths:
+            chart = self.graph_boxes.get(v)
+            if chart is None:
+                continue
+
+            labels = [str(s) for s in all_s]
+            values = []
+
+            for s in all_s:
+                key = (v, s)
+                if key in results:
+                    values.append(results[key])   # accuracy 값
+                else:
+                    values.append(None)           # 데이터 없음 → 막대/퍼센트 없음
+
+            chart.set_data(labels, values)
+
+
+# 기존 InferenceSection은 더 이상 UI에 추가하지 않지만,
+# 코드 호환을 위해 남겨둠 (사용 안 함)
 class InferenceSection(QWidget):
     def __init__(self):
         super().__init__()
-        title = "9. Inference" if not INFER_ONLY_FROM_TEST else "8. Inference (use datasets/test)"
+        title = "Inference (unused)"
         g = QGroupBox(title); g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
             "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
         )
         h = QHBoxLayout()
-        placeholder = "Select image (default: datasets/test)" if not INFER_ONLY_FROM_TEST \
-                      else "Select test image (default: datasets/test)"
-        self.file_input = QLineEdit(); self.file_input.setPlaceholderText(placeholder)
-        self.file_input.setFixedHeight(35)
-        self.file_input.setStyleSheet("QLineEdit{border:1px solid #ccc;border-radius:8px;padding-left:10px;font-size:13px;}")
-        self.browse_btn = QPushButton("..."); self.browse_btn.setFixedSize(35,35)
-        self.browse_btn.setStyleSheet("QPushButton{border:1px solid #ccc;border-radius:8px;background:#fff;font-weight:700;} QPushButton:hover{background:#e9ecef;}")
-        self.start_btn = QPushButton("Start"); self.start_btn.setFixedSize(70,35); self.start_btn.setStyleSheet(BUTTON_STYLE)
-        h.addWidget(self.file_input); h.addWidget(self.browse_btn); h.addWidget(self.start_btn)
+        self.file_input = QLineEdit()
+        h.addWidget(self.file_input)
         g.setLayout(h)
         v = QVBoxLayout(self); v.addWidget(g)
 
@@ -427,38 +628,25 @@ class SubWindow(QWidget):
 
         lay = QVBoxLayout(container); lay.setContentsMargins(20,60,20,20); lay.setSpacing(20)
 
-        self.progress = ProgressSection("7. Train"); lay.addWidget(self.progress)
+        # 5. Train (progress bar)
+        self.progress = ProgressSection("5. Train"); lay.addWidget(self.progress)
 
-        out_g = QGroupBox("8. Output folder"); out_g.setStyleSheet(
-            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
-            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
-        )
-        row = QHBoxLayout()
-        self.out_label = QLabel("")
-        self.out_label.setStyleSheet("font-size:13px;")
-        self.open_btn = QPushButton("Open folder"); self.open_btn.setFixedSize(110,32); self.open_btn.setStyleSheet(BUTTON_STYLE)
-        self.open_btn.clicked.connect(self._open_output_folder)
-        row.addWidget(self.out_label); row.addStretch(); row.addWidget(self.open_btn); out_g.setLayout(row)
-        lay.addWidget(out_g)
+        # 6. Experiment graph (그래프 + 숨겨진 로그)
+        self.graph_section = ExperimentGraphSection()
+        lay.addWidget(self.graph_section)
 
-        self.infer = InferenceSection(); lay.addWidget(self.infer)
-        self.infer.browse_btn.clicked.connect(self._browse_infer_file)
-        self.infer.start_btn.clicked.connect(self._start_inference)
+        # 로그용 핸들 (기존 self.result를 그래프 섹션의 log_view로 매핑)
+        # log_view 는 화면에는 보이지 않음
+        self.result = self.graph_section.log_view
 
-        res_g = QGroupBox("10. Result"); res_g.setStyleSheet(
-            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
-            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
-        )
-        self.result = ResultView()
-        rg_lay = QVBoxLayout(res_g); rg_lay.addWidget(self.result)
-        lay.addWidget(res_g)
-
+        # 아래에 Next 버튼만 남김
         btn_row = QHBoxLayout()
         self.next_btn = QPushButton("Next"); self.next_btn.setFixedSize(110,38); self.next_btn.setStyleSheet(BUTTON_STYLE)
         self.next_btn.clicked.connect(self._go_next); self.next_btn.setEnabled(False)
         btn_row.addStretch(); btn_row.addWidget(self.next_btn); lay.addLayout(btn_row)
 
-    # select dataset + sample/test split + K-means + Train + Eval
+    # select dataset + sample/test split + K-means + Train + Eval (20개 실험 + 메모리 체크)
+       # select dataset + sample/test split + K-means + Train + Eval (20개 실험 + 메모리 체크)
     def _run_kmeans_and_train(self):
         # 저장 루트(쓰기 가능) 확보
         output_base = _resolve_output_root(self.output_root)
@@ -473,21 +661,20 @@ class SubWindow(QWidget):
         test_root     = os.path.join(datasets_root, "test")
         os.makedirs(sample_root, exist_ok=True)
         os.makedirs(train_root, exist_ok=True)
-        os.makedirs(test_root, exist_ok=True)
+        os.makedirs(test_root,  exist_ok=True)
         self._datasets_root = datasets_root
         self._train_dir     = train_root
         self._test_dir      = test_root
 
-        self.out_label.setText(self._datasets_root)
-
+        # 공통 상태 초기화
         self._train_originals.clear()
         self._train_copies.clear()
         self._test_items.clear()
         self.train_samples.clear()
 
+        # ────────────────── 1단계: 각 클래스 폴더 → sample(8), test(2) 비율로 먼저 나누기 ──────────────────
         total = max(1, len(self.selection))
 
-        # 1단계: 각 클래스 폴더 → sample(8), test(2) 비율로 먼저 나누기
         for i, item in enumerate(self.selection, start=1):
             dir_path = item["dir"]
             label    = str(item["label"])
@@ -528,15 +715,13 @@ class SubWindow(QWidget):
             os.makedirs(dst_sample_label, exist_ok=True)
             os.makedirs(dst_test_label,   exist_ok=True)
 
-            # 8비율 → sample 폴더로 복사
+            # 8비율 → sample 폴더로 복사 (훈련 후보)
             for idx_ in sample_idx:
                 src  = srcs[idx_]
                 base = os.path.basename(src)
                 dst  = os.path.join(dst_sample_label, base)
                 try:
                     shutil.copy2(src, dst)
-                    # sample 폴더에 있는 파일은 "훈련 후보" 역할
-                    # 여기서는 아직 train으로 쓰지 않으므로 _train_*에는 추가하지 않음
                 except Exception as e:
                     self._hint(f"Failed to copy sample: {src} ({e})")
 
@@ -553,203 +738,225 @@ class SubWindow(QWidget):
 
             self._info(f"    → sample {sample_cnt} / test {test_cnt} (≈8:2 split)")
 
-        # 2단계: sample 폴더에서만 K-means로 k개 선별 → train 폴더에 저장
-        for i, item in enumerate(self.selection, start=1):
-            label = str(item["label"])
-            src_sample_label = os.path.join(sample_root, label)
-            if not os.path.isdir(src_sample_label):
-                continue
-
-            # sample 폴더에서 이미지 벡터 로드
-            X, sample_paths = load_images_from_dir(src_sample_label)
-            n_samples = len(sample_paths)
-            if n_samples == 0:
-                continue
-
-            # 이 클래스에서 최종으로 뽑을 개수 k
-            k = min(self.samples_per_class, n_samples)
-
-            # K-means로 대표 인덱스 선택
-            chosen_idx = kmeans_clustering(X, k)
-            chosen_set = set(chosen_idx)
-
-            dst_train_label = os.path.join(train_root, label)
-            os.makedirs(dst_train_label, exist_ok=True)
-
-            for r, idx in enumerate(chosen_idx, start=1):
-                src  = sample_paths[idx]   # sample 폴더 안의 이미지
-                base = os.path.basename(src)
-                dst  = os.path.join(dst_train_label, f"{label}_sel{r:02d}_{base}")
-                try:
-                    shutil.copy2(src, dst)
-                    # 학습에 실제로 쓰이는 파일(원본=sample, 복사=train)을 기록
-                    self._train_originals.add(self._norm(src))
-                    self._train_copies.add(self._norm(dst))
-                    self.train_samples.append((dst, label))
-                except Exception as e:
-                    self._hint(f"Failed to copy train: {src} ({e})")
-
-            self._info(f"    → train(selected from sample) {k} / sample total {n_samples}")
-
+        # split 끝났으니 게이지를 0으로 초기화
         self.progress.update(0)
-
         self.result.clear()
-        self._ok("Sample/Test split (≈8:2) and K-means selection completed.")
-        self._info("Sample candidates are stored at <code>datasets/sample/</code>.")
-        self._info("Training dataset prepared at <code>datasets/train/</code>.")
-        if self._test_items:
-            self._info("Test dataset prepared at <code>datasets/test/</code>.")
-        else:
-            self._hint("No test images were available; accuracy cannot be computed.")
+        self._ok("Sample/Test split (≈8:2) completed for each category.")
+        if not self._test_items:
+            self._hint("No test images were available; accuracy may not be computed.")
         self.result.add_hr()
 
-        # -------------------- Train -----------------------
-        try:
-            self._info("Training Intellino …")
+        # ────────────────── 2단계: 20개 실험 (vector_length × samples_per_class) ──────────────────
+        vec_lengths = [64, 128, 256, 512]
+        k_list      = [2, 4, 6, 8, 10]
 
-            # 1) NeuronCells 인스턴스 생성
-            self.neuron_cells = NeuronCells(
-                number_of_neuron_cells=self.number_of_neuron_cells,
-                length_of_input_vector=self.length_of_input_vector,
-                measure="manhattan"
-            )
-            def _progress_cb(perc: int):
-                self.progress.update(perc)
-                QApplication.processEvents()
-            
-            # intellino 학습 (train 폴더에 선택된 k개만 사용)
-            train(
-                neuron_cells=self.neuron_cells,
-                train_samples=self.train_samples,
-                number_of_neuron_cells=self.number_of_neuron_cells,
-                length_of_input_vector=self.length_of_input_vector,
-                progress_callback=_progress_cb
-            )
-        except Exception as e:
-            self._err(f"Training failed: {e}")
-            self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
-            return
+        num_classes = self.num_classes
+        memory_kb   = self.exp_params.get("memory_kb", None)
+        memory_bytes = memory_kb * 1024 if memory_kb is not None else None
 
-        # -------------------- Eval on test ----------------------
-        try:
-            if self._test_items and (self.neuron_cells is not None):
-                correct, total = 0, 0
-                for p, true_lab in self._test_items:
-                    try:
-                        pred_lab = infer(
-                            neuron_cells=self.neuron_cells,
-                            image_path=p,
-                            length_of_input_vector=self.length_of_input_vector,
+        any_run = False  # 실제로 학습/평가가 한 번이라도 수행됐는지 여부
+
+        # 그래프용 결과 저장: 실제로 학습+평가한 조합만 기록
+        results = {}
+
+        # ✅ 전체에서 메모리 조건을 만족하는 실험 개수 미리 계산
+        valid_pairs = []
+        for vec_len in vec_lengths:
+            for k in k_list:
+                if memory_bytes is not None:
+                    required = num_classes * vec_len * k
+                    if required > memory_bytes:
+                        continue
+                valid_pairs.append((vec_len, k))
+
+        total_experiments = max(1, len(valid_pairs))
+        done_experiments = 0
+
+        for vec_len in vec_lengths:
+            for k in k_list:
+                # ── 메모리 부등식: num_classes × vector_length × samples_per_class ≤ memory_size ──
+                if memory_bytes is not None:
+                    required = num_classes * vec_len * k
+                    if required > memory_bytes:
+                        self._hint(
+                            f"Skip V{vec_len}, T{k}: "
+                            f"{num_classes}×{vec_len}×{k}={required} > memory({memory_bytes} bytes)"
                         )
-                    except Exception:
+                        # 이 조합은 학습/추론 생략 (게이지에도 포함 안 됨)
                         continue
 
-                    total += 1
-                    if str(pred_lab) == str(true_lab):
-                        correct += 1
+                any_run = True
+                experiment_attempted = True
 
-                if total > 0:
-                    acc = 100.0 * correct / total
-                    self._last_accuracy = float(acc)
-                    EXPERIMENT_STATE.add_run(self._make_param_label(), float(acc))
+                try:
+                    self._info(f"=== Experiment: V{vec_len}, T{k} ===")
 
-                    self.result.add_block("<b>Test evaluation (Intellino)</b>")
-                    self.result.add_block(
-                        f"Accuracy: <b>{acc:.2f}%</b> "
-                        f"(<code>{correct}</code>/<code>{total}</code>) "
-                    )
-                else:
-                    self._hint("Test dataset exists but no readable images; accuracy cannot be computed.")
-            self.result.add_hr()
-            if INFER_ONLY_FROM_TEST:
-                self._hint("You can now run inference below. Only <code>datasets/test</code> files are allowed.")
-            else:
-                self._hint("You can now run inference below. You may choose images from anywhere; training files are blocked.")
-            self.result.add_hr()
-            self.next_btn.setEnabled(True)
-        except Exception as e:
-            self._err(f"Evaluation failed: {e}")
-            self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+                    # 현재 실험 파라미터 반영
+                    self.length_of_input_vector = vec_len
+                    self.samples_per_class     = k
+                    self.number_of_neuron_cells = self.num_classes * self.samples_per_class
+
+                    # 이전 실험의 train 관련 상태 초기화
+                    self._train_originals.clear()
+                    self._train_copies.clear()
+                    self.train_samples.clear()
+
+                    # ── 2-1) sample 폴더에서만 K-means로 k개 선별 → train 폴더에 저장 ──
+                    for i, item in enumerate(self.selection, start=1):
+                        label = str(item["label"])
+                        src_sample_label = os.path.join(sample_root, label)
+                        if not os.path.isdir(src_sample_label):
+                            continue
+
+                        # sample 폴더에서 이미지 벡터 로드
+                        X, sample_paths = load_images_from_dir(src_sample_label)
+                        n_samples = len(sample_paths)
+                        if n_samples == 0:
+                            continue
+
+                        k_eff = min(self.samples_per_class, n_samples)
+                        if k_eff <= 0:
+                            continue
+
+                        # K-means로 대표 인덱스 선택
+                        chosen_idx = kmeans_clustering(X, k_eff)
+
+                        dst_train_label = os.path.join(train_root, f"V{vec_len}_T{k}", label)
+                        os.makedirs(dst_train_label, exist_ok=True)
+
+                        for r, idx in enumerate(chosen_idx, start=1):
+                            src  = sample_paths[idx]   # sample 폴더 안의 이미지
+                            base = os.path.basename(src)
+                            dst  = os.path.join(dst_train_label, f"{label}_sel{r:02d}_{base}")
+                            try:
+                                shutil.copy2(src, dst)
+                                self._train_originals.add(self._norm(src))
+                                self._train_copies.add(self._norm(dst))
+                                self.train_samples.append((dst, label))
+                            except Exception as e:
+                                self._hint(f"Failed to copy train (V{vec_len},T{k}): {src} ({e})")
+
+                        self._info(
+                            f"[V{vec_len},T{k}] label='{label}' → train(selected from sample) {k_eff} / sample total {n_samples}"
+                        )
+
+                    # 학습에 쓸 샘플이 없으면 이 조합은 스킵
+                    if not self.train_samples:
+                        self._hint(f"No train samples for V{vec_len}, T{k}; skip training.")
+                        self.result.add_hr()
+                        continue
+
+                    # ── 2-2) Train (Intellino) ──
+                    try:
+                        self._info(f"Training Intellino (V{vec_len}, T{k}) …")
+
+                        # 1) NeuronCells 인스턴스 생성
+                        self.neuron_cells = NeuronCells(
+                            number_of_neuron_cells=self.number_of_neuron_cells,
+                            length_of_input_vector=self.length_of_input_vector,
+                            measure="manhattan"
+                        )
+
+                        # train 내부 진행률은 전체 게이지와 의미가 안 맞으니 콜백 제거
+                        train(
+                            neuron_cells=self.neuron_cells,
+                            train_samples=self.train_samples,
+                            number_of_neuron_cells=self.number_of_neuron_cells,
+                            length_of_input_vector=self.length_of_input_vector,
+                            progress_callback=None
+                        )
+                    except Exception as e:
+                        self._err(f"Training failed (V{vec_len}, T{k}): {e}")
+                        self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+                        self.result.add_hr()
+                        continue
+
+                    # ── 2-3) Eval on test ──
+                    try:
+                        acc = 0.0
+                        if self._test_items and (self.neuron_cells is not None):
+                            correct, total = 0, 0
+                            for p, true_lab in self._test_items:
+                                try:
+                                    pred_lab = infer(
+                                        neuron_cells=self.neuron_cells,
+                                        image_path=p,
+                                        length_of_input_vector=self.length_of_input_vector,
+                                    )
+                                except Exception:
+                                    continue
+
+                                total += 1
+                                if str(pred_lab) == str(true_lab):
+                                    correct += 1
+
+                            if total > 0:
+                                acc = 100.0 * correct / total
+                                self._last_accuracy = float(acc)
+
+                                memory_kb = self.exp_params.get("memory_kb", None)
+                                if memory_kb is not None:
+                                    param_label = f"V{vec_len} / C{num_classes} / T{k} / M{memory_kb}K"
+                                else:
+                                    param_label = f"V{vec_len} / C{num_classes} / T{k}"
+
+                                EXPERIMENT_STATE.add_run(param_label, float(acc))
+
+                                self.result.add_block(f"<b>Test evaluation (Intellino) — {param_label}</b>")
+                                self.result.add_block(
+                                    f"Accuracy: <b>{acc:.2f}%</b> "
+                                    f"(<code>{correct}</code>/<code>{total}</code>)"
+                                )
+                            else:
+                                self._hint(f"(V{vec_len},T{k}) Test dataset exists but no readable images; accuracy cannot be computed.")
+                        else:
+                            self._hint(f"(V{vec_len},T{k}) No test items or model; evaluation skipped.")
+
+                        # 그래프용 결과 저장: 실제로 학습+평가까지 수행된 조합만 기록
+                        results[(vec_len, k)] = acc
+                        self.result.add_hr()
+                    except Exception as e:
+                        self._err(f"Evaluation failed (V{vec_len}, T{k}): {e}")
+                        self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+                        self.result.add_hr()
+                        continue
+
+                finally:
+                    # ✅ 이 (vec_len, k) 실험이 한 번 시도되었으면, 전체 진행률 갱신
+                    if experiment_attempted and (vec_len, k) in valid_pairs:
+                        done_experiments += 1
+                        global_p = int(done_experiments * 100 / total_experiments)
+                        self.progress.update(global_p)
+
+        # ────────────────── 그래프 업데이트 ──────────────────
+        self.graph_section.update_graph(results, vec_lengths, k_list)
+
+        # ────────────────── 3단계: 전체 실험 요약 ──────────────────
+        if not any_run:
+            self._hint("No experiment satisfied memory constraint; no training/inference was performed.")
+        self.result.add_hr()
+        # 모든 실험 끝난 시점에 사실상 100%에 도달해 있음
+        self.progress.update(100)
+        self.next_btn.setEnabled(True)
 
 
-    # Single data Inference 
+    # Single data Inference (현재 UI에서는 사용되지 않지만, 호환용으로 남김)
     def _browse_infer_file(self):
         start_dir = self._test_dir if (self._test_dir and os.path.isdir(self._test_dir)) else self._datasets_root
-        title = "Select test image (only from datasets/test)" if INFER_ONLY_FROM_TEST else "Select image"
+        title = "Select image"
         while True:
             file_path, _ = QFileDialog.getOpenFileName(self, title, start_dir, "Images (*.png *.jpg *.jpeg *.bmp)")
             if not file_path:
                 return
             rp = os.path.realpath(file_path)
             is_training = self._is_training_file(rp)
-            if INFER_ONLY_FROM_TEST:
-                test_root = os.path.realpath(self._test_dir) if self._test_dir else ""
-                in_test_root = bool(test_root and self._is_subpath(rp, test_root))
-                if in_test_root and not is_training:
-                    self.infer.file_input.setText(file_path); return
-                if not in_test_root:
-                    QMessageBox.warning(self, "Not allowed", "허용되지 않은 경로입니다.\n추론 이미지는 datasets/test 폴더에서 선택해 주세요.")
-                elif is_training:
-                    QMessageBox.warning(self, "Not allowed", "이 파일은 학습에 사용되었습니다. 다른 파일을 선택해 주세요.")
-            else:
-                if not is_training:
-                    self.infer.file_input.setText(file_path); return
-                QMessageBox.warning(self, "Not allowed", "이 파일은 학습에 사용되었습니다. 다른 파일을 선택해 주세요.")
+            if not is_training:
+                return
+            QMessageBox.warning(self, "Not allowed", "이 파일은 학습에 사용되었습니다. 다른 파일을 선택해 주세요.")
 
     def _start_inference(self):
-        image_path = self.infer.file_input.text().strip()
-        if not image_path:
-            self._hint("Please choose an image file first.")
-            return
-
-        if self._is_training_file(image_path):
-            QMessageBox.warning(self, "Not allowed", "This file was used for training. Please choose a different file.")
-            return
-
-        # 1) Intellino NeuronCells 준비 (메모리 또는 pkl에서 로드)
-        if self.neuron_cells is None:
-            # temp 폴더에 저장된 pkl에서 로드
-            pkl_path = os.path.join("temp", "trained_neuron.pkl")
-            if not os.path.exists(pkl_path):
-                self._err("No trained Intellino model. Run train first.")
-                return
-            try:
-                with open(pkl_path, "rb") as f:
-                    self.neuron_cells = pickle.load(f)
-            except Exception as e:
-                self._err(f"Failed to load Intellino model: {e}")
-                self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
-                return
-
-        # 2) Intellino infer() 호출
-        try:
-            pred = infer(
-                neuron_cells=self.neuron_cells,
-                image_path=image_path,
-                length_of_input_vector=self.length_of_input_vector,
-            )
-
-            img_name = os.path.basename(image_path)
-
-            self.result.add_block(" <b>Inference (Intellino)</b>")
-            if self._last_accuracy is not None:
-                self._hint(f"Last test accuracy (datasets/test, Intellino): {self._last_accuracy:.2f}%")
-            self.result.add_block(f"Input: <code>{img_name}</code>")
-            self.result.add_block(f"Prediction: <span class='pred'>{pred}</span>")
-
-            # datasets/test 안에서 고른 경우, 즉석 정오 판정
-            test_root = os.path.realpath(self._test_dir) if self._test_dir else ""
-            rp = os.path.realpath(image_path)
-            if test_root and self._is_subpath(rp, test_root):
-                gt = os.path.basename(os.path.dirname(rp))  # 폴더명이 정답
-                ok = (str(pred) == str(gt))
-                self.result.add_block(
-                    f"Ground truth: <b>{gt}</b> → {'Correct' if ok else 'Wrong'}"
-                )
-
-        except Exception as e:
-            self._err(f"Inference failed: {e}")
-            self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+        # 현재 UI에서는 사용되지 않지만, 기존 코드 호환을 위해 남겨 둠.
+        self._hint("Inference UI is disabled in this version.")
 
     def _open_output_folder(self):
         p = self._datasets_root.strip()
@@ -766,7 +973,6 @@ class SubWindow(QWidget):
             pass
 
     def _go_next(self):
-        
         try:
             from custom_4 import ExperimentWindow as Window4
         except Exception as e:
@@ -808,6 +1014,7 @@ class SubWindow(QWidget):
         except Exception as e:
             self._err(f"Failed to open next window: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

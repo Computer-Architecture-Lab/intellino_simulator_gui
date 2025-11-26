@@ -37,6 +37,10 @@ class MainWindow(QMainWindow):
         img_path2 = resource_path("intellino_TM_transparent.png")
         img_path3 = resource_path("home.png")
 
+        print("img_path :", img_path,  os.path.exists(img_path))
+        print("img_path2:", img_path2, os.path.exists(img_path2))
+        print("img_path3:", img_path3, os.path.exists(img_path3))
+
         if os.path.exists(img_path):
             self.ui.imageLabel.setPixmap(QPixmap(img_path))
             self.ui.imageLabel.setScaledContents(True)

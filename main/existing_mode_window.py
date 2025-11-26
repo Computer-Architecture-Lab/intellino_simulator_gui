@@ -2,7 +2,7 @@
 import sys
 import os
 import traceback
-from path_utils import get_dirs
+from utils.path_utils import get_dirs
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,

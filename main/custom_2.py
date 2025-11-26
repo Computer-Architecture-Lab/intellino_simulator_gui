@@ -11,7 +11,7 @@ from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor
 from PySide2.QtCore import Qt, QSize, Signal
 
 from custom_3 import SubWindow as Window3
-from path_utils import get_dirs
+from utils.path_utils import get_dirs
 
 from utils.resource_utils import resource_path
 from utils.ui_common import BUTTON_STYLE
@@ -207,7 +207,7 @@ class TrainDatasetGroup(QGroupBox):
         n > 0  → 초록 (OK)
         n == 0 → 빨강 (데이터 없음)
         """
-        if n > 0:
+        if n > 12:
             return (
                 "QLabel { background:#e6fcf5; border:1px solid #37b24d; "
                 "color:#2b8a3e; border-radius:6px; padding:4px; }"
