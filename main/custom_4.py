@@ -18,7 +18,10 @@ from utils.resource_utils import resource_path
 from utils.ui_common import TitleBar, BUTTON_STYLE
 
 
-# ── 실험 상태 전역 ─────────────────────────────────────────
+#=======================================================================================================#
+#                                               UI 구성                                                  #
+#=======================================================================================================#
+# 실험 상태 전역
 class ExperimentState:
     MAX_RUNS = 5
     def __init__(self):
@@ -43,8 +46,6 @@ class ExperimentState:
 
 
 EXPERIMENT_STATE = ExperimentState()
-# ───────────────────────────────────────────────────────────
-
 
 # ── Matplotlib 캔버스 ──
 class AccuracyCanvas(FigureCanvas):
@@ -192,8 +193,9 @@ class ExperimentGraphSection(QWidget):
         labels, accs = EXPERIMENT_STATE.get_labels_accs()
         self.canvas.update_plot(labels, accs)
 
-
-# 메인 창
+#=======================================================================================================#
+#                                                 main                                                  #
+#=======================================================================================================#
 class ExperimentWindow(QWidget):
     def __init__(self, num_categories: int = 0):
         super().__init__()
@@ -257,6 +259,9 @@ class ExperimentWindow(QWidget):
         self._update_controls()
         self.refresh_graph()
 
+#=======================================================================================================#
+#                                              function                                                 #
+#=======================================================================================================#
     def _update_controls(self):
         full = EXPERIMENT_STATE.is_full()
         self.reconf_btn.setEnabled(not full)

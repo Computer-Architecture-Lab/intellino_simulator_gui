@@ -21,7 +21,7 @@ from path_utils import get_dirs
 from intellino.core.neuron_cell import NeuronCells
 # 실험 상태 전역 객체(커스텀4에서 정의)
 from custom_4 import EXPERIMENT_STATE
-
+#=======================================================================================================#
 
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
@@ -42,7 +42,7 @@ try:
 except Exception:
     pass
 #=======================================================================================================#
-#                                           function                                                    #
+#                                              function                                                 #
 #=======================================================================================================#
 
 def _is_writable_dir(path: str) -> bool:
@@ -376,7 +376,9 @@ class SubWindow(QWidget):
         self._setup_ui()
         QTimer.singleShot(150, self._run_kmeans_and_train)
 
-    # ------------------------------------- helpers ---------------------------------------------
+#=======================================================================================================#
+#                                              function                                                 #
+#=======================================================================================================#
     def _ok(self, text:str):   self.result.add_block(f"<span class='ok'>{text}</span>")
     def _info(self, text:str): self.result.add_block(f"<span class='info'>{text}</span>")
     def _hint(self, text:str): self.result.add_block(f"<span class='dim'>{text}</span>")
@@ -411,7 +413,7 @@ class SubWindow(QWidget):
         return " / ".join(map(str, parts))
 
 
-    # ------------------------------------------ UI --------------------------------------------
+    # UI setup
     def _setup_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground); self.setFixedSize(800,800)
@@ -456,8 +458,7 @@ class SubWindow(QWidget):
         self.next_btn.clicked.connect(self._go_next); self.next_btn.setEnabled(False)
         btn_row.addStretch(); btn_row.addWidget(self.next_btn); lay.addLayout(btn_row)
 
-
-    # ---------------------------- select dataset + Train + Eval -------------------------------
+    # select dataset + sample/test split + K-means + Train + Eval
     def _run_kmeans_and_train(self):
         # 저장 루트(쓰기 가능) 확보
         output_base = _resolve_output_root(self.output_root)
@@ -467,8 +468,10 @@ class SubWindow(QWidget):
         self._last_save_root = save_root
 
         datasets_root = os.path.join(save_root, "datasets")
+        sample_root   = os.path.join(datasets_root, "sample")
         train_root    = os.path.join(datasets_root, "train")
         test_root     = os.path.join(datasets_root, "test")
+        os.makedirs(sample_root, exist_ok=True)
         os.makedirs(train_root, exist_ok=True)
         os.makedirs(test_root, exist_ok=True)
         self._datasets_root = datasets_root
@@ -480,60 +483,119 @@ class SubWindow(QWidget):
         self._train_originals.clear()
         self._train_copies.clear()
         self._test_items.clear()
+        self.train_samples.clear()
 
         total = max(1, len(self.selection))
-        for i, item in enumerate(self.selection, start=1):
-            dir_path = item["dir"]; label = str(item["label"])
-            X, srcs = load_images_from_dir(dir_path)
-            # 로깅: 라벨-디렉터리 매핑 및 수량
-            self._info(f"[{i}] label='{label}' dir='{dir_path}' → images={len(srcs)}")
 
-            n_samples = len(srcs)
-            if n_samples == 0:
-                # self.progress.update(int(i/total*100))
+        # 1단계: 각 클래스 폴더 → sample(8), test(2) 비율로 먼저 나누기
+        for i, item in enumerate(self.selection, start=1):
+            dir_path = item["dir"]
+            label    = str(item["label"])
+
+            # 원본 폴더에서 이미지 경로 수집
+            try:
+                srcs = [
+                    os.path.join(dir_path, f)
+                    for f in sorted(os.listdir(dir_path))
+                    if str(f).lower().endswith(IMG_EXTS)
+                ]
+            except Exception as e:
+                self._err(f"[{i}] Failed to read directory: {dir_path} ({e})")
                 continue
 
-            # 이 클래스에서 뽑을 개수 k
+            n_samples = len(srcs)
+            self._info(f"[{i}] label='{label}' dir='{dir_path}' → images={n_samples}")
+
+            if n_samples == 0:
+                continue
+
+            # 8:2 비율로 인덱스 split (최소 1장 sample, 1장 test 되도록 보정)
+            indices = np.arange(n_samples)
+            np.random.shuffle(indices)
+
+            sample_cnt = int(round(n_samples * 0.8))
+            if sample_cnt <= 0:
+                sample_cnt = 1
+            if sample_cnt >= n_samples and n_samples > 1:
+                sample_cnt = n_samples - 1
+            test_cnt = n_samples - sample_cnt
+
+            sample_idx = indices[:sample_cnt]
+            test_idx   = indices[sample_cnt:]
+
+            dst_sample_label = os.path.join(sample_root, label)
+            dst_test_label   = os.path.join(test_root, label)
+            os.makedirs(dst_sample_label, exist_ok=True)
+            os.makedirs(dst_test_label,   exist_ok=True)
+
+            # 8비율 → sample 폴더로 복사
+            for idx_ in sample_idx:
+                src  = srcs[idx_]
+                base = os.path.basename(src)
+                dst  = os.path.join(dst_sample_label, base)
+                try:
+                    shutil.copy2(src, dst)
+                    # sample 폴더에 있는 파일은 "훈련 후보" 역할
+                    # 여기서는 아직 train으로 쓰지 않으므로 _train_*에는 추가하지 않음
+                except Exception as e:
+                    self._hint(f"Failed to copy sample: {src} ({e})")
+
+            # 2비율 → test 폴더로 복사 (평가용)
+            for idx_ in test_idx:
+                src  = srcs[idx_]
+                base = os.path.basename(src)
+                dst  = os.path.join(dst_test_label, base)
+                try:
+                    shutil.copy2(src, dst)
+                    self._test_items.append((dst, label))
+                except Exception as e:
+                    self._hint(f"Failed to copy test: {src} ({e})")
+
+            self._info(f"    → sample {sample_cnt} / test {test_cnt} (≈8:2 split)")
+
+        # 2단계: sample 폴더에서만 K-means로 k개 선별 → train 폴더에 저장
+        for i, item in enumerate(self.selection, start=1):
+            label = str(item["label"])
+            src_sample_label = os.path.join(sample_root, label)
+            if not os.path.isdir(src_sample_label):
+                continue
+
+            # sample 폴더에서 이미지 벡터 로드
+            X, sample_paths = load_images_from_dir(src_sample_label)
+            n_samples = len(sample_paths)
+            if n_samples == 0:
+                continue
+
+            # 이 클래스에서 최종으로 뽑을 개수 k
             k = min(self.samples_per_class, n_samples)
 
             # K-means로 대표 인덱스 선택
             chosen_idx = kmeans_clustering(X, k)
             chosen_set = set(chosen_idx)
 
-            # k-means 선별된 train data 복사
             dst_train_label = os.path.join(train_root, label)
             os.makedirs(dst_train_label, exist_ok=True)
+
             for r, idx in enumerate(chosen_idx, start=1):
-                src  = srcs[idx]; base = os.path.basename(src)
+                src  = sample_paths[idx]   # sample 폴더 안의 이미지
+                base = os.path.basename(src)
                 dst  = os.path.join(dst_train_label, f"{label}_sel{r:02d}_{base}")
                 try:
                     shutil.copy2(src, dst)
+                    # 학습에 실제로 쓰이는 파일(원본=sample, 복사=train)을 기록
                     self._train_originals.add(self._norm(src))
                     self._train_copies.add(self._norm(dst))
                     self.train_samples.append((dst, label))
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._hint(f"Failed to copy train: {src} ({e})")
 
-            dst_test_label = os.path.join(test_root, label)
-            os.makedirs(dst_test_label, exist_ok=True)
-            for idx, src in enumerate(srcs):
-                if idx in chosen_set:
-                    continue
-                base = os.path.basename(src)
-                test_dst = os.path.join(dst_test_label, base)
-                try:
-                    shutil.copy2(src, test_dst)
-                    self._test_items.append((test_dst, label))
-                except Exception:
-                    pass
+            self._info(f"    → train(selected from sample) {k} / sample total {n_samples}")
 
-            self._info(f"    → train {k} / test {len(srcs)-k}")
-
-        
         self.progress.update(0)
 
         self.result.clear()
-        self._ok("K-means selection completed.")
+        self._ok("Sample/Test split (≈8:2) and K-means selection completed.")
+        self._info("Sample candidates are stored at <code>datasets/sample/</code>.")
         self._info("Training dataset prepared at <code>datasets/train/</code>.")
         if self._test_items:
             self._info("Test dataset prepared at <code>datasets/test/</code>.")
@@ -555,7 +617,7 @@ class SubWindow(QWidget):
                 self.progress.update(perc)
                 QApplication.processEvents()
             
-            # intellino 학습
+            # intellino 학습 (train 폴더에 선택된 k개만 사용)
             train(
                 neuron_cells=self.neuron_cells,
                 train_samples=self.train_samples,
@@ -574,18 +636,15 @@ class SubWindow(QWidget):
                 correct, total = 0, 0
                 for p, true_lab in self._test_items:
                     try:
-                        # intellino 추론
                         pred_lab = infer(
                             neuron_cells=self.neuron_cells,
                             image_path=p,
                             length_of_input_vector=self.length_of_input_vector,
                         )
                     except Exception:
-                        # 전처리 실패 등은 평가에서 스킵
                         continue
 
                     total += 1
-                    # 문자열/정수 섞여도 비교되도록 문자열로 맞춰서 비교
                     if str(pred_lab) == str(true_lab):
                         correct += 1
 
@@ -598,22 +657,22 @@ class SubWindow(QWidget):
                     self.result.add_block(
                         f"Accuracy: <b>{acc:.2f}%</b> "
                         f"(<code>{correct}</code>/<code>{total}</code>) "
-                        f"on <code>datasets/test/</code> using Intellino"
                     )
                 else:
                     self._hint("Test dataset exists but no readable images; accuracy cannot be computed.")
             self.result.add_hr()
             if INFER_ONLY_FROM_TEST:
-                self._hint("You can now run inference below (section 8). Only <code>datasets/test</code> files are allowed.")
+                self._hint("You can now run inference below. Only <code>datasets/test</code> files are allowed.")
             else:
-                self._hint("You can now run inference below (section 8). You may choose images from anywhere; training files are blocked.")
+                self._hint("You can now run inference below. You may choose images from anywhere; training files are blocked.")
             self.result.add_hr()
             self.next_btn.setEnabled(True)
         except Exception as e:
             self._err(f"Evaluation failed: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
 
-    # --------------------------- Inference ----------------------------
+
+    # Single data Inference 
     def _browse_infer_file(self):
         start_dir = self._test_dir if (self._test_dir and os.path.isdir(self._test_dir)) else self._datasets_root
         title = "Select test image (only from datasets/test)" if INFER_ONLY_FROM_TEST else "Select image"
@@ -688,12 +747,10 @@ class SubWindow(QWidget):
                     f"Ground truth: <b>{gt}</b> → {'Correct' if ok else 'Wrong'}"
                 )
 
-            # SimpleNearestModel 때 쓰던 top-k 테이블은 Intellino에선 생략
         except Exception as e:
             self._err(f"Inference failed: {e}")
             self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
 
-    # ---------- etc ----------
     def _open_output_folder(self):
         p = self._datasets_root.strip()
         if not p: p = self._last_save_root or ""

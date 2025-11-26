@@ -11,8 +11,8 @@ from PySide2.QtWidgets import (
 )
 from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent
 from PySide2.QtCore import Qt, QSize, QTimer, Signal, QThread
+#=======================================================================================================#
 
-# ──────────────────────────────────────────────
 # exe/개발 공통 리소스 경로 헬퍼
 def resource_path(name: str) -> str:
     """
@@ -29,13 +29,15 @@ def resource_path(name: str) -> str:
         if os.path.exists(p):
             return p
     return candidates[0]  # 마지막 안전장치
-# ──────────────────────────────────────────────
 
 LOGO_PATH = resource_path("intellino_TM_transparent.png")
 HOME_ICON_PATH = resource_path("home.png")
 CUSTOM_IMAGE_ROOT, NUMBER_IMAGE_DIR, _ = get_dirs(__file__)
 
 
+#=======================================================================================================#
+#                                               UI 구성                                                  #
+#=======================================================================================================#
 # 1. Dataset 섹션 (클래스 분리)
 class DatasetSection(QWidget):
     # 어떤 데이터셋이 선택되었는지 메인에 알리기 위한 신호
@@ -93,8 +95,7 @@ class DatasetSection(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(dataset_group)
 
-
-# 2. Train 섹션 (최소 높이)
+# 2. Train 섹션 
 class TrainSection(QWidget):
     def __init__(self):
         super().__init__()
@@ -133,8 +134,7 @@ class TrainSection(QWidget):
         self.progress_bar.setValue(value)
         self.percent_label.setText(f"{value}%")
 
-
-# 3. Inference 섹션 (최소 높이)
+# 3. Inference 섹션 
 class InferenceSection(QWidget):
     inference_requested = Signal(str)  # 파일 경로를 전달
 
@@ -216,7 +216,6 @@ class InferenceSection(QWidget):
         # print(f"[DEBUG] Start button clicked, file = {file_path}")
         self.inference_requested.emit(file_path)
 
-
 # 4. Result 섹션 (가변 크기 + 스크롤 가능)
 class ResultSection(QWidget):
     def __init__(self):
@@ -248,6 +247,7 @@ class ResultSection(QWidget):
 
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(result_group)
+
 
 class MnistTrainWorker(QThread):
     progress = Signal(int)
@@ -287,8 +287,9 @@ class MnistInferWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-
-# 메인 창
+#=======================================================================================================#
+#                                                 main                                                  #
+#=======================================================================================================#
 class SubWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -379,6 +380,9 @@ class SubWindow(QWidget):
         title_bar.mousePressEvent = self.mousePressEvent
         title_bar.mouseMoveEvent = self.mouseMoveEvent
 
+#=======================================================================================================#
+#                                              function                                                 #
+#=======================================================================================================#
     # run inference
     def run_inference(self, file_path):
         file_path = file_path.strip()
@@ -443,20 +447,6 @@ class SubWindow(QWidget):
     def _on_mnist_train_error(self, msg: str):
         self.result_section.result_text.append("[ERROR] MNIST 학습 중 오류 발생:")
         self.result_section.result_text.append(msg)
-    # def mnistFunction(self):
-    #     train_path = os.path.join(os.path.dirname(__file__), "mnist.py")  # 필요 시 resource_path("mnist.py")
-    #     self.process = subprocess.Popen([sys.executable, train_path],
-    #                                     stdout=subprocess.PIPE,
-    #                                     stderr=subprocess.STDOUT,
-    #                                     universal_newlines=True,
-    #                                     bufsize=1)
-    #     self.timer = QTimer()
-    #     self.timer.timeout.connect(self.check_progress_output)
-    #     self.timer.start(10)
-
-    # 필요 시 확장
-    # def cifarFunction(self): pass
-    # def speechFunction(self): pass
 
     def check_progress_output(self):
         if self.process.stdout:
