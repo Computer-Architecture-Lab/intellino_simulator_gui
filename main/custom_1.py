@@ -12,6 +12,7 @@ from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QIntValidator
 from custom_2 import launch_training_window
 from utils.resource_utils import resource_path
 from utils.ui_common import TitleBar, BUTTON_STYLE, TOGGLE_BUTTON_STYLE
+#=======================================================================================================#
 
 # 두 번째 이미지와 같은 큰 테두리 높이
 SECOND_STYLE_FIXED_HEIGHT = 260
@@ -45,7 +46,9 @@ GROUPBOX_WITH_FLOATING_TITLE = """
     }
 """
 
-# -----------------------------
+#=======================================================================================================#
+#                                               UI 구성                                                  #
+#=======================================================================================================#
 # 공통 입력 박스 베이스
 class IntegerInputGroup(QGroupBox):
     def __init__(self, title, example_text, on_apply=None, notice_text=None):
@@ -105,7 +108,6 @@ class IntegerInputGroup(QGroupBox):
         if trigger_update and self.on_apply_callback:
             self.on_apply_callback()
 
-
 class CategoryInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
         super().__init__("2. Number of class to train", "ex) 10", on_apply=on_apply)
@@ -122,8 +124,6 @@ class CategoryInputGroup(IntegerInputGroup):
         else:
             self.max_label.setText(f"max: {max_value}")
 
-
-# -----------------------------
 # 1. Intellino memory size
 class IntellinoMemorySizeGroup(QGroupBox):
     def __init__(self, on_select=None):
@@ -167,8 +167,6 @@ class IntellinoMemorySizeGroup(QGroupBox):
     def get_selected_size_kbyte(self):
         return self._selected_kbyte
 
-
-# -----------------------------
 # 3. Required memory size
 class MemorySizeSection(QGroupBox):
     def __init__(self):
@@ -219,8 +217,9 @@ class MemorySizeSection(QGroupBox):
         self.output_box.setText(text)
 
 
-# -----------------------------
-# 메인 윈도우
+#=======================================================================================================#
+#                                                 main                                                  #
+#=======================================================================================================#
 class Custom_1_Window(QWidget):
     def __init__(self, prev_window=None):
         super().__init__()

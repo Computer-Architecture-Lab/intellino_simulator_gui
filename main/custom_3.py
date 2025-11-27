@@ -6,21 +6,17 @@ from utils.resource_utils import resource_path
 from utils.image_preprocess import preprocess_digit_image
 from utils.ui_common import TitleBar, BUTTON_STYLE
 
-# 추론 경로 제어(기본 False: 어느 경로든 허용, 단 학습 파일 차단)
-INFER_ONLY_FROM_TEST = False
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGroupBox, QGraphicsDropShadowEffect, QSizePolicy, QGraphicsOpacityEffect,
-    QLineEdit, QFileDialog, QProgressBar, QTextBrowser, QMessageBox, QStyle
+    QProgressBar, QTextBrowser
 )
-from PySide2.QtGui import QPixmap, QIcon, QMouseEvent, QColor, QTextCursor, QPainter, QPen, QBrush, QFont
-from PySide2.QtCore import Qt, QSize, QTimer, QPropertyAnimation, QEasingCurve
+from PySide2.QtGui import QColor, QTextCursor, QPainter, QPen, QBrush
+from PySide2.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from utils.path_utils import get_dirs
 
 from intellino.core.neuron_cell import NeuronCells
-# 실험 상태 전역 객체(커스텀4에서 정의)
-from custom_4 import EXPERIMENT_STATE
 #=======================================================================================================#
 
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
@@ -30,7 +26,7 @@ CUSTOM_IMAGE_ROOT, NUMBER_IMAGE_DIR, DEFAULT_OUTPUT_ROOT = get_dirs(__file__)
 
 # exe에서 경로가 없을 때(또는 구조가 다른 경우) 보정 시도
 try:
-    main_dir = os.path.dirname(resource_path("intellino_TM_transparent.png"))  # 보통 '_MEIPASS/main'
+    main_dir = os.path.dirname(resource_path("image/intellino_TM_transparent.png"))  # 보통 '_MEIPASS/main'
     if not os.path.isdir(CUSTOM_IMAGE_ROOT):
         cand = os.path.join(main_dir, "custom_image")
         if os.path.isdir(cand):
@@ -146,8 +142,6 @@ def kmeans_clustering(vectors: np.ndarray, num_select: int,
 
     return chosen
 
-MODEL_BASENAME = "custom_model.pkl"
-
 # 전처리(단일 파이프라인)
 # → utils.image_preprocess.preprocess_digit_image 를 사용합니다.
 def load_images_from_dir(dir_path: str):
@@ -163,18 +157,6 @@ def load_images_from_dir(dir_path: str):
     if not X:
         return np.empty((0,784), dtype=np.float32), []
     return np.stack(X, axis=0), keep
-
-def vectorize_like_training(path: str):
-    """과거 함수명 유지: 공통 숫자 전처리 래퍼"""
-    try:
-        return preprocess_digit_image(path)
-    except Exception:
-        return None
-
-# 과거 함수명 유지(외부 코드 의존 대비)
-def preprocess_user_image(image_path: str) -> np.ndarray:
-    """공통 숫자 전처리 래퍼"""
-    return preprocess_digit_image(image_path)
 
 # Intellino train
 def train(neuron_cells,
@@ -200,7 +182,6 @@ def train(neuron_cells,
         opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
         resized_image = cv2.resize(opencv_image, dsize=(resize_size, resize_size))
         flatten_image = resized_image.reshape(1, -1).squeeze()
-        # ----------------------------------------
 
         # label 타입 정리 (문자열 "0" 같은 것도 int로 변환 시도)
         try:
@@ -267,6 +248,23 @@ def infer(neuron_cells,
 #=======================================================================================================#
 #                                               UI 구성                                                  #
 #=======================================================================================================#
+
+# 그래프
+class ExperimentState:
+    def __init__(self):
+        self.runs = []
+
+    def add_run(self, label, acc):
+        self.runs.append((label, acc))
+
+    def clear(self):
+        self.runs.clear()
+# 지워도 됨
+    def get_all(self):
+        return self.runs
+
+EXPERIMENT_STATE = ExperimentState()
+
 class ProgressSection(QWidget):
     def __init__(self, title="7. Train"):
         super().__init__()
@@ -330,11 +328,10 @@ class BarChartWidget(QWidget):
         self.setMinimumHeight(180)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    def set_data(self, labels, values):
-        # labels: ["2","4","6","8","10"] 형태
-        # values: [정확도 or None, ...] (len == len(labels))
-        self._labels = list(labels)
-        self._values = list(values)
+    def set_data(self, labels, values, global_max=None):
+        self._labels = labels
+        self._values = values
+        self._global_max = global_max
         self.update()
 
     def paintEvent(self, event):
@@ -391,6 +388,10 @@ class BarChartWidget(QWidget):
 
         # 막대 및 퍼센트 텍스트 그리기
         bar_brush = QBrush(QColor(59, 130, 246))  # 파란색 계열
+        max_brush  = QBrush(QColor(38, 220, 38))  # 최고값: 초록색
+
+        valid_values = [v for v in self._values if v is not None]
+        max_value = max(valid_values) if valid_values else None
 
         for i, (label, val) in enumerate(zip(self._labels, self._values)):
             if val is None:
@@ -407,10 +408,13 @@ class BarChartWidget(QWidget):
 
             # 막대
             painter.setPen(Qt.NoPen)
-            painter.setBrush(bar_brush)
+            if self._global_max is not None and val == self._global_max:
+                painter.setBrush(max_brush)   # 전역 최고 정확도 → 초록색
+            else:
+                painter.setBrush(bar_brush)   # 나머지 → 파란색
             painter.drawRect(left, top, bar_width, h)
 
-            # ✅ 막대 위에 퍼센트 텍스트 (좌우 안 잘리게 bar_space 기준으로 넓게)
+            # 막대 위에 퍼센트 텍스트 (좌우 안 잘리게 bar_space 기준으로 넓게)
             painter.setPen(QPen(QColor(30, 30, 30)))
             font = painter.font()
             font.setPointSize(8)
@@ -428,7 +432,7 @@ class BarChartWidget(QWidget):
                 txt,
             )
 
-        # ✅ y축 단위 라벨 "A"
+        # y축 단위 라벨 "A"
         #   - 살짝 왼쪽(x0-25), 살짝 위(y1+10) 쪽으로 조정
         painter.setPen(QPen(QColor(60, 60, 60)))
         font = painter.font()
@@ -442,8 +446,6 @@ class BarChartWidget(QWidget):
             Qt.AlignRight | Qt.AlignVCenter,
             "A",
         )
-
-
 
 class ExperimentGraphSection(QWidget):
     """
@@ -489,6 +491,10 @@ class ExperimentGraphSection(QWidget):
 
         inner.addLayout(grid)
 
+        self.memory_label = QLabel("")
+        self.memory_label.setStyleSheet("font-size: 13px; color: #444; margin-top: 8px;")
+        self.memory_label.setAlignment(Qt.AlignLeft)
+        inner.addWidget(self.memory_label)
         # 아래쪽 로그(문자 결과 창)는 화면에서 제거
         # 내부 로깅용으로만 숨겨진 ResultView 유지
         self.log_view = ResultView()
@@ -502,6 +508,13 @@ class ExperimentGraphSection(QWidget):
         - 각 vec_len 그래프마다 S 라벨은 항상 5개가 다 보이게 하고,
           해당 S에 대한 결과가 없으면 value 는 None으로 둔다.
         """
+
+        all_values = []
+        for v in results.values():
+            if v is not None:
+                all_values.append(v)
+        global_max = max(all_values) if all_values else None
+
         all_s = [2, 4, 6, 8, 10]  # S 값 다섯 개 고정
 
         for v in vec_lengths:
@@ -519,24 +532,7 @@ class ExperimentGraphSection(QWidget):
                 else:
                     values.append(None)           # 데이터 없음 → 막대/퍼센트 없음
 
-            chart.set_data(labels, values)
-
-
-# 기존 InferenceSection은 더 이상 UI에 추가하지 않지만,
-# 코드 호환을 위해 남겨둠 (사용 안 함)
-class InferenceSection(QWidget):
-    def __init__(self):
-        super().__init__()
-        title = "Inference (unused)"
-        g = QGroupBox(title); g.setStyleSheet(
-            "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
-            "QGroupBox::title{subcontrol-origin:margin;subcontrol-position:top left;padding:0 5px;}"
-        )
-        h = QHBoxLayout()
-        self.file_input = QLineEdit()
-        h.addWidget(self.file_input)
-        g.setLayout(h)
-        v = QVBoxLayout(self); v.addWidget(g)
+            chart.set_data(labels, values, global_max=global_max)
 
 #=======================================================================================================#
 #                                                 main                                                  #
@@ -588,19 +584,6 @@ class SubWindow(QWidget):
     def _norm(self, p: str) -> str:
         return os.path.normcase(os.path.abspath(p))
 
-    def _is_training_file(self, p: str) -> bool:
-        npth = self._norm(p)
-        return (npth in self._train_originals) or (npth in self._train_copies)
-
-    def _is_subpath(self, child: str, parent: str) -> bool:
-        """child 가 parent 하위 경로인지 안전하게 확인(드라이브 상이 예외 대응)."""
-        try:
-            child_real  = os.path.realpath(child)
-            parent_real = os.path.realpath(parent)
-            return os.path.commonpath([child_real, parent_real]) == parent_real
-        except Exception:
-            return False
-
     def _make_param_label(self) -> str:
         c = self.exp_params.get("num_classes", self.num_categories)
         t = self.exp_params.get("samples_per_class", self.samples_per_class)
@@ -646,7 +629,6 @@ class SubWindow(QWidget):
         btn_row.addStretch(); btn_row.addWidget(self.next_btn); lay.addLayout(btn_row)
 
     # select dataset + sample/test split + K-means + Train + Eval (20개 실험 + 메모리 체크)
-       # select dataset + sample/test split + K-means + Train + Eval (20개 실험 + 메모리 체크)
     def _run_kmeans_and_train(self):
         # 저장 루트(쓰기 가능) 확보
         output_base = _resolve_output_root(self.output_root)
@@ -759,7 +741,7 @@ class SubWindow(QWidget):
         # 그래프용 결과 저장: 실제로 학습+평가한 조합만 기록
         results = {}
 
-        # ✅ 전체에서 메모리 조건을 만족하는 실험 개수 미리 계산
+        # 전체에서 메모리 조건을 만족하는 실험 개수 미리 계산
         valid_pairs = []
         for vec_len in vec_lengths:
             for k in k_list:
@@ -779,7 +761,7 @@ class SubWindow(QWidget):
                     required = num_classes * vec_len * k
                     if required > memory_bytes:
                         self._hint(
-                            f"Skip V{vec_len}, T{k}: "
+                            f"Skip V{vec_len}, S{k}: "
                             f"{num_classes}×{vec_len}×{k}={required} > memory({memory_bytes} bytes)"
                         )
                         # 이 조합은 학습/추론 생략 (게이지에도 포함 안 됨)
@@ -789,11 +771,11 @@ class SubWindow(QWidget):
                 experiment_attempted = True
 
                 try:
-                    self._info(f"=== Experiment: V{vec_len}, T{k} ===")
+                    self._info(f"=== Experiment: V{vec_len}, S{k} ===")
 
                     # 현재 실험 파라미터 반영
                     self.length_of_input_vector = vec_len
-                    self.samples_per_class     = k
+                    self.samples_per_class      = k
                     self.number_of_neuron_cells = self.num_classes * self.samples_per_class
 
                     # 이전 실험의 train 관련 상태 초기화
@@ -821,7 +803,7 @@ class SubWindow(QWidget):
                         # K-means로 대표 인덱스 선택
                         chosen_idx = kmeans_clustering(X, k_eff)
 
-                        dst_train_label = os.path.join(train_root, f"V{vec_len}_T{k}", label)
+                        dst_train_label = os.path.join(train_root, f"V{vec_len}_S{k}", label)
                         os.makedirs(dst_train_label, exist_ok=True)
 
                         for r, idx in enumerate(chosen_idx, start=1):
@@ -834,21 +816,21 @@ class SubWindow(QWidget):
                                 self._train_copies.add(self._norm(dst))
                                 self.train_samples.append((dst, label))
                             except Exception as e:
-                                self._hint(f"Failed to copy train (V{vec_len},T{k}): {src} ({e})")
+                                self._hint(f"Failed to copy train (V{vec_len},S{k}): {src} ({e})")
 
                         self._info(
-                            f"[V{vec_len},T{k}] label='{label}' → train(selected from sample) {k_eff} / sample total {n_samples}"
+                            f"[V{vec_len},S{k}] label='{label}' → train(selected from sample) {k_eff} / sample total {n_samples}"
                         )
 
                     # 학습에 쓸 샘플이 없으면 이 조합은 스킵
                     if not self.train_samples:
-                        self._hint(f"No train samples for V{vec_len}, T{k}; skip training.")
+                        self._hint(f"No train samples for V{vec_len}, S{k}; skip training.")
                         self.result.add_hr()
                         continue
 
                     # ── 2-2) Train (Intellino) ──
                     try:
-                        self._info(f"Training Intellino (V{vec_len}, T{k}) …")
+                        self._info(f"Training Intellino (V{vec_len}, S{k}) …")
 
                         # 1) NeuronCells 인스턴스 생성
                         self.neuron_cells = NeuronCells(
@@ -866,7 +848,7 @@ class SubWindow(QWidget):
                             progress_callback=None
                         )
                     except Exception as e:
-                        self._err(f"Training failed (V{vec_len}, T{k}): {e}")
+                        self._err(f"Training failed (V{vec_len}, S{k}): {e}")
                         self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
                         self.result.add_hr()
                         continue
@@ -896,9 +878,9 @@ class SubWindow(QWidget):
 
                                 memory_kb = self.exp_params.get("memory_kb", None)
                                 if memory_kb is not None:
-                                    param_label = f"V{vec_len} / C{num_classes} / T{k} / M{memory_kb}K"
+                                    param_label = f"V{vec_len} / C{num_classes} / S{k} / M{memory_kb}K"
                                 else:
-                                    param_label = f"V{vec_len} / C{num_classes} / T{k}"
+                                    param_label = f"V{vec_len} / C{num_classes} / S{k}"
 
                                 EXPERIMENT_STATE.add_run(param_label, float(acc))
 
@@ -908,21 +890,21 @@ class SubWindow(QWidget):
                                     f"(<code>{correct}</code>/<code>{total}</code>)"
                                 )
                             else:
-                                self._hint(f"(V{vec_len},T{k}) Test dataset exists but no readable images; accuracy cannot be computed.")
+                                self._hint(f"(V{vec_len},S{k}) Test dataset exists but no readable images; accuracy cannot be computed.")
                         else:
-                            self._hint(f"(V{vec_len},T{k}) No test items or model; evaluation skipped.")
+                            self._hint(f"(V{vec_len},S{k}) No test items or model; evaluation skipped.")
 
                         # 그래프용 결과 저장: 실제로 학습+평가까지 수행된 조합만 기록
                         results[(vec_len, k)] = acc
                         self.result.add_hr()
                     except Exception as e:
-                        self._err(f"Evaluation failed (V{vec_len}, T{k}): {e}")
+                        self._err(f"Evaluation failed (V{vec_len}, S{k}): {e}")
                         self.result.add_block(f"<pre class='dim'>{traceback.format_exc()}</pre>")
                         self.result.add_hr()
                         continue
 
                 finally:
-                    # ✅ 이 (vec_len, k) 실험이 한 번 시도되었으면, 전체 진행률 갱신
+                    # 이 (vec_len, k) 실험이 한 번 시도되었으면, 전체 진행률 갱신
                     if experiment_attempted and (vec_len, k) in valid_pairs:
                         done_experiments += 1
                         global_p = int(done_experiments * 100 / total_experiments)
@@ -930,6 +912,11 @@ class SubWindow(QWidget):
 
         # ────────────────── 그래프 업데이트 ──────────────────
         self.graph_section.update_graph(results, vec_lengths, k_list)
+        memory_kb = self.exp_params.get("memory_kb", None)
+        if memory_kb is not None:
+            self.graph_section.memory_label.setText(f"Selected memory size: {memory_kb} KB")
+        else:
+            self.graph_section.memory_label.setText("Selected memory size: (not specified)")
 
         # ────────────────── 3단계: 전체 실험 요약 ──────────────────
         if not any_run:
@@ -939,39 +926,75 @@ class SubWindow(QWidget):
         self.progress.update(100)
         self.next_btn.setEnabled(True)
 
+         # ───────────────── 4단계: best_results 생성 ──────────────
+        best_root = os.path.join(self._last_save_root, "best_results")
+        os.makedirs(best_root, exist_ok=True)
 
-    # Single data Inference (현재 UI에서는 사용되지 않지만, 호환용으로 남김)
-    def _browse_infer_file(self):
-        start_dir = self._test_dir if (self._test_dir and os.path.isdir(self._test_dir)) else self._datasets_root
-        title = "Select image"
-        while True:
-            file_path, _ = QFileDialog.getOpenFileName(self, title, start_dir, "Images (*.png *.jpg *.jpeg *.bmp)")
-            if not file_path:
-                return
-            rp = os.path.realpath(file_path)
-            is_training = self._is_training_file(rp)
-            if not is_training:
-                return
-            QMessageBox.warning(self, "Not allowed", "이 파일은 학습에 사용되었습니다. 다른 파일을 선택해 주세요.")
+        # 4-1) 이번 실행에서 나온 실험 중에서만 "전역 최고 정확도" 찾기
+        best_acc = None
+        best_pairs = []  # [(vec_len, k), ...]
 
-    def _start_inference(self):
-        # 현재 UI에서는 사용되지 않지만, 기존 코드 호환을 위해 남겨 둠.
-        self._hint("Inference UI is disabled in this version.")
+        for (vec_len, k), acc in results.items():
+            # acc가 0.0일 수도 있으니 None 체크만 한다
+            if acc is None:
+                continue
+            if best_acc is None or acc > best_acc:
+                best_acc = acc
+                best_pairs = [(vec_len, k)]
+            elif acc == best_acc:
+                best_pairs.append((vec_len, k))
 
-    def _open_output_folder(self):
-        p = self._datasets_root.strip()
-        if not p: p = self._last_save_root or ""
-        if not p: return
-        try:
-            if sys.platform.startswith("win"):
-                os.startfile(p)
-            elif sys.platform == "darwin":
-                __import__("subprocess").Popen(["open", p])
+        # 이번 실행에서 유효한 실험이 하나도 없으면 종료
+        if best_acc is None or not best_pairs:
+            self._hint("No valid experiment result; best_results is empty.")
+            return
+
+        num_classes = self.num_classes
+        memory_kb   = self.exp_params.get("memory_kb", None)
+
+        # 4-2) best_pairs 에 해당하는 train 이미지들만 best_results로 복사
+        for (vec_len, k) in best_pairs:
+            # 폴더 이름 문자열 생성 (예: "V64 / C5 / S4 / M8K")
+            if memory_kb is not None:
+                label_str = f"V{vec_len} / S{k} / C{num_classes} / M{memory_kb}K"
             else:
-                __import__("subprocess").Popen(["xdg-open", p])
-        except Exception:
-            pass
+                label_str = f"V{vec_len} / S{k} / C{num_classes}"
 
+            folder_label = label_str.replace(" ", "").replace("/", "_")
+            dst_folder = os.path.join(best_root, folder_label)
+
+            # 기존 폴더가 있으면 통째로 삭제 후 다시 생성 (동일 실행 내 재실행 대비)
+            if os.path.isdir(dst_folder):
+                shutil.rmtree(dst_folder)
+            os.makedirs(dst_folder, exist_ok=True)
+
+            # 이 실험에서 사용된 train 폴더 경로
+            train_src = os.path.join(
+                self._train_dir,
+                f"V{vec_len}_S{k}"
+            )
+
+            # train_src 내부에 각 label(0~9 등) 디렉토리가 있음
+            if os.path.isdir(train_src):
+                for label_dir in sorted(os.listdir(train_src)):
+                    src_label_path = os.path.join(train_src, label_dir)
+                    if not os.path.isdir(src_label_path):
+                        continue
+
+                    dst_label_path = os.path.join(dst_folder, label_dir)
+                    os.makedirs(dst_label_path, exist_ok=True)
+
+                    for f in os.listdir(src_label_path):
+                        src_path = os.path.join(src_label_path, f)
+                        dst_path = os.path.join(dst_label_path, f)
+                        try:
+                            shutil.copy2(src_path, dst_path)
+                        except Exception as e:
+                            self._hint(f"Failed to copy to best_results: {src_path} ({e})")
+
+        # 최종 best_results 경로 저장
+        self._best_results_root = best_root
+ 
     def _go_next(self):
         try:
             from custom_4 import ExperimentWindow as Window4
@@ -981,7 +1004,10 @@ class SubWindow(QWidget):
             return
 
         try:
-            win4 = Window4(num_categories=getattr(self, "num_categories", 0))
+            win4 = Window4(
+                num_categories=getattr(self, "num_categories", 0),
+                best_results_root=self._best_results_root
+            )
             try:
                 win4.setGeometry(self.geometry())
             except Exception:

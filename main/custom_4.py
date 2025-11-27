@@ -1,311 +1,448 @@
 import sys
 import os
+import shutil
+import numpy as np
+import cv2
 
 from PySide2.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QGraphicsDropShadowEffect, QSizePolicy
+    QGroupBox, QTextBrowser, QLineEdit, QFileDialog, QMessageBox, QSizePolicy
 )
-from PySide2.QtGui import QPixmap, QIcon, QColor, QMouseEvent, QPainter, QPalette
 from PySide2.QtCore import Qt, QSize
+from PySide2.QtGui import QPixmap, QIcon, QColor, QFont
 
-# matplotlib 임베딩
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import matplotlib as mpl
+from intellino.core.neuron_cell import NeuronCells
+from custom_3 import train as intellino_train
+from custom_3 import infer as intellino_infer, IMG_EXTS
 
-# 공통 유틸 import
+# ------------------------------------------------------------
+# 공통 유틸 (중복 정의 X)
+# ------------------------------------------------------------
 from utils.resource_utils import resource_path
 from utils.ui_common import TitleBar, BUTTON_STYLE
-
-
-#=======================================================================================================#
-#                                               UI 구성                                                  #
-#=======================================================================================================#
-# 실험 상태 전역
-class ExperimentState:
-    MAX_RUNS = 5
-    def __init__(self):
-        self.runs = []  # [(label:str, acc:float), ...]
-
-    def add_run(self, label: str, acc: float):
-        if label is None or acc is None:
-            return
-        if len(self.runs) < self.MAX_RUNS:
-            self.runs.append((str(label), float(acc)))
-
-    def is_full(self) -> bool:
-        return len(self.runs) >= self.MAX_RUNS
-
-    def clear(self):
-        self.runs.clear()
-
-    def get_labels_accs(self):
-        labels = [lb for lb, _ in self.runs]
-        accs   = [float(ac) for _, ac in self.runs]
-        return labels, accs
-
-
-EXPERIMENT_STATE = ExperimentState()
-
-# ── Matplotlib 캔버스 ──
-class AccuracyCanvas(FigureCanvas):
-    """
-    - X축 슬롯: 항상 5칸 고정
-    - 막대 색상/두께: 기존 유지
-    - 배경을 항상 완전 불투명(white)으로 강제
-    """
-    DEFAULT_BAR_WIDTH = 0.8
-    BAR_WIDTH_SCALE   = 1.0 / 2.0
-    BAR_COLOR         = "cornflowerblue"
-
-    def __init__(self, parent=None):
-        # Matplotlib 전역 배경/투명 설정 방지
-        mpl.rcParams['figure.facecolor'] = 'white'
-        mpl.rcParams['axes.facecolor']   = 'white'
-        mpl.rcParams['savefig.facecolor'] = 'white'
-        mpl.rcParams['savefig.transparent'] = False
-
-        fig = Figure(figsize=(5.0, 4.0), tight_layout=True, facecolor='white', edgecolor='white')
-        super().__init__(fig)
-        self.setParent(parent)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # Qt 위젯 배경을 완전 불투명 흰색으로 강제
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setAttribute(Qt.WA_OpaquePaintEvent, True)     # Qt가 투명 합성하지 않도록 힌트
-        self.setAttribute(Qt.WA_TranslucentBackground, False)
-        self.setAutoFillBackground(True)
-
-        pal = self.palette()
-        pal.setColor(QPalette.Window, Qt.white)
-        pal.setColor(QPalette.Base,   Qt.white)
-        self.setPalette(pal)
-        self.setStyleSheet("background-color: white;")
-
-        self.ax = self.figure.add_subplot(111)
-        self._init_axes()
-
-    def _init_axes(self):
-        self.ax.clear()
-
-        # Figure/Axes 모두 흰색·불투명 강제
-        self.figure.patch.set_facecolor('white')
-        self.figure.patch.set_alpha(1.0)
-        self.ax.set_facecolor('white')
-        self.ax.patch.set_alpha(1.0)
-
-        self.ax.set_ylim(0, 100)
-        self.ax.set_ylabel("Accuracy (%)")
-        self.ax.set_xlabel("Parameters")
-        self.ax.grid(True, axis='y', linestyle='--', alpha=0.3)
-
-    # 페인트 전에 전체 영역을 흰색으로 칠해 투명 채널/합성 제거
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.fillRect(self.rect(), Qt.white)
-        p.end()
-        super().paintEvent(event)
-
-    def update_plot(self, labels, accuracies):
-        self._init_axes()
-
-        max_runs = ExperimentState.MAX_RUNS
-        labels     = list(labels or [])
-        accuracies = [float(a) for a in (accuracies or [])]
-
-        # 5칸 고정 패딩
-        if len(labels) < max_runs:
-            pad = max_runs - len(labels)
-            labels     += [""] * pad
-            accuracies += [0.0] * pad
-
-        xs = list(range(1, max_runs + 1))
-        bar_w = self.DEFAULT_BAR_WIDTH * self.BAR_WIDTH_SCALE
-        self.ax.bar(xs, accuracies, color=self.BAR_COLOR, width=bar_w)
-
-        self.ax.set_xlim(0.5, max_runs + 0.5)
-        self.ax.set_xticks(xs)
-        self.ax.set_xticklabels(labels, rotation=30, ha='right', fontsize=9)
-
-        # 값 라벨: 0%는 생략
-        for xi, acc in zip(xs, accuracies):
-            if acc > 0:
-                self.ax.text(xi, acc + 1, f"{acc:.1f}%", ha='center', va='bottom', fontsize=9)
-
-        self.figure.subplots_adjust(bottom=0.32)
-
-        self.draw_idle()
-
-
-# 9. Experiment graph 섹션
-class ExperimentGraphSection(QWidget):
-    def __init__(self):
-        super().__init__()
-
-        group = QGroupBox("11. Experiment graph")
-        group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold; font-size: 14px;
-                border: 1px solid #a9a9a9;
-                border-radius: 12px;
-                margin-top: 10px;
-                /* 전체 패딩을 살짝 줄여 테두리 안으로 자연스럽게 */
-                padding: 14px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 6px;
-            }
-        """)
-
-        v = QVBoxLayout()
-        v.setContentsMargins(10, 10, 10, 16)
-        v.setSpacing(8)
-
-        # 백플레이트(완전 흰색) 위에 캔버스를 얹고, 섀도우는 백플레이트에만 적용
-        self.backplate = QWidget()
-        self.backplate.setStyleSheet("background-color: white; border-radius: 8px;")
-        self.backplate.setMinimumHeight(520)
-        bp_layout = QVBoxLayout(self.backplate)
-        bp_layout.setContentsMargins(12, 12, 12, 80)  # 캔버스와 가장자리 간격
-        bp_layout.setSpacing(0)
-
-        self.canvas = AccuracyCanvas()
-        self.canvas.setMinimumHeight(520)
-        bp_layout.addWidget(self.canvas)
-
-        shadow = QGraphicsDropShadowEffect(self.backplate)
-        shadow.setBlurRadius(18)
-        shadow.setColor(QColor(0, 0, 0, 60))
-        shadow.setOffset(0, 0)
-        self.backplate.setGraphicsEffect(shadow)
-
-        v.addWidget(self.backplate)
-        v.addSpacing(8)
-
-        group.setLayout(v)
-
-        main = QVBoxLayout(self)
-        main.addWidget(group)
-
-    def refresh(self):
-        labels, accs = EXPERIMENT_STATE.get_labels_accs()
-        self.canvas.update_plot(labels, accs)
+from utils.image_preprocess import preprocess_digit_image
 
 #=======================================================================================================#
 #                                                 main                                                  #
 #=======================================================================================================#
 class ExperimentWindow(QWidget):
-    def __init__(self, num_categories: int = 0):
+    """Experiment 결과 요약 + best_results 구성 + Inference + Finish"""
+
+    def __init__(self, num_categories=0, best_results_root=None):
         super().__init__()
+
         self.num_categories = num_categories
-        self._custom1_window = None
-        self._setup_ui()
 
-    def _setup_ui(self):
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground)  # 프레임리스 둥근 모서리 유지
-        self.setFixedSize(800, 800)
-
-        container = QWidget(self)
-        container.setStyleSheet("background-color: white; border-radius: 15px;")
-        container.setGeometry(0, 0, 800, 800)
-
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setColor(QColor(0, 0, 0, 100))
-        self.setGraphicsEffect(shadow)
-
-        self.title_bar = TitleBar(self)
-        self.title_bar.setParent(container)
-        self.title_bar.setGeometry(0, 0, 800, 50)
-
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(20, 60, 20, 20)
-        layout.setSpacing(20)
-
-        # 9. Experiment graph
-        self.graph_section = ExperimentGraphSection()
-        self.graph_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self.graph_section)
-
-        layout.addStretch(1)
-
-        # 하단 버튼들
-        btn_col = QVBoxLayout()
-        btn_col.setSpacing(12)
-
-        self.reconf_btn = QPushButton("Reconfigure")
-        self.reconf_btn.setFixedSize(120, 40)
-        self.reconf_btn.setStyleSheet(BUTTON_STYLE)
-        self.reconf_btn.clicked.connect(self._open_reconfigure)
-
-        self.finish_btn = QPushButton("Finish")
-        self.finish_btn.setFixedSize(120, 40)
-        self.finish_btn.setStyleSheet(BUTTON_STYLE)
-        self.finish_btn.clicked.connect(self._on_finish_clicked)  # Finish 시 초기화
-
-        btn_col.addWidget(self.reconf_btn)
-        btn_col.addWidget(self.finish_btn)
-
-        btn_container = QWidget()
-        btn_container.setLayout(btn_col)
-        btn_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-
-        layout.addWidget(btn_container, 0, Qt.AlignRight | Qt.AlignBottom)
-
-        # 초기 상태 반영
-        self._update_controls()
-        self.refresh_graph()
-
-#=======================================================================================================#
-#                                              function                                                 #
-#=======================================================================================================#
-    def _update_controls(self):
-        full = EXPERIMENT_STATE.is_full()
-        self.reconf_btn.setEnabled(not full)
-        if full:
-            self.reconf_btn.setToolTip("Maximum 5 runs reached. Please finish (Home).")
+        # custom_3에서 넘어온 best_results_root
+        if best_results_root is not None:
+            self.best_results_root = best_results_root
         else:
-            self.reconf_btn.setToolTip("Configure parameters and run more experiments.")
+            self.best_results_root = os.path.join(os.getcwd(), "best_results")
 
-    def refresh_graph(self):
-        self.graph_section.refresh()
+        self.best_results_path = None    # 7번 Output 폴더 경로
+        self.test_root = None            # datasets/test 절대경로
+        self.selected_param_dir = None   # 선택한 Vxx_Cxx_Txx_MxxK 폴더
+        self.neuron_cells = None         # 학습한 모델 저장
+        self.param_str = None            # V@/T@/C@/M@ 문자열
 
-    def showEvent(self, e):
-        self._update_controls()
-        self.refresh_graph()
-        super().showEvent(e)
+        # 기본 UI 초기화
+        self._setup_window()
+        self._setup_titlebar()
+        self._setup_layout_placeholder()
 
-    def _open_reconfigure(self):
-        # 5회 도달 시 재설정 금지
-        if EXPERIMENT_STATE.is_full():
-            self.close()
+        # custom_4 UI 전체 생성
+        self.build_ui()
+
+    # 창 기본 세팅
+    def _setup_window(self):
+        """창 스타일/크기/배경/그림자 설정"""
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.resize(800, 800)
+
+        # 메인 배경 컨테이너
+        self.container = QWidget(self)
+        self.container.setGeometry(0, 0, 800, 800)
+        self.container.setObjectName("base_container")
+        self.container.setStyleSheet("""
+            #base_container {
+                background: #ffffff;
+                border-radius: 15px;
+            }
+        """)
+
+    # TitleBar 추가
+    def _setup_titlebar(self):
+        """상단 TitleBar(로고 + home 버튼)"""
+        self.titlebar = TitleBar(self)
+        self.titlebar.setParent(self.container)
+        self.titlebar.setGeometry(0, 0, 800, 50)
+
+    # 전체 레이아웃 placeholder
+    def _setup_layout_placeholder(self):
+        layout = QVBoxLayout(self.container)
+        layout.setContentsMargins(20, 80, 20, 20)
+        layout.setSpacing(18)
+        self.main_layout = layout
+
+
+# ============================================================
+# custom_4.py — PART 2
+# best_results 생성 + Output Folder Section UI
+# ============================================================
+
+    def _build_best_results(self):
+        """best_results 경로 + test 경로 생성"""
+        self.best_results_path = self.best_results_root
+        run_root = os.path.dirname(self.best_results_root)
+        self.test_root = os.path.join(run_root, "datasets", "test")
+
+    # 절대 경로 표시 편하게
+    def _pretty_path(self, path: str) -> str:
+        if not path:
+            return ""
+
+        lower = path.lower()
+        key = os.path.join("intellino_simulator_gui").lower()
+        idx = lower.find(key)
+        if idx != -1:
+            return path[idx:]
+        return path
+
+    # Start 버튼 enable/disable 공통 처리
+    def _set_start_button_enabled(self, enabled: bool):
+        if not hasattr(self, "start_btn"):
+            return
+        self.start_btn.setEnabled(enabled)
+        if enabled:
+            self.start_btn.setStyleSheet(BUTTON_STYLE)
+        else:
+            # 회색으로 비활성화 느낌만 주기
+            self.start_btn.setStyleSheet(BUTTON_STYLE + "color: gray;")
+
+    # Output Folder Section 생성 (UI 교체됨)
+    def _add_output_section(self):
+        """7. Output Folder — 파라미터 폴더 선택 + Apply(학습)"""
+
+        group = QGroupBox("7. Output Folder")
+        group.setStyleSheet("""
+            QGroupBox {
+                font-weight:bold; 
+                border:1px solid #ccc; 
+                border-radius:10px; 
+                margin-top:6px; 
+                padding:8px 10px 10px 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding:-6px 4px 4px 4px;
+            }
+        """)
+
+        hl = QHBoxLayout()
+
+        # Label: param folder (Vxx_Cxx_Txx_MxxK) — 테두리 없는 텍스트만
+        self.output_label = QLabel("")
+        self.output_label.setStyleSheet("font-size:13px;")
+        self.output_label.setMinimumHeight(30)
+
+        # "..." 버튼 → 폴더 선택
+        browse_btn = QPushButton("...")
+        browse_btn.setFixedSize(36, 30)
+        browse_btn.setStyleSheet(BUTTON_STYLE)
+        browse_btn.clicked.connect(self._browse_param_folder)
+
+        # Apply 버튼 → train 실행
+        apply_btn = QPushButton("Apply")
+        apply_btn.setFixedSize(80, 30)
+        apply_btn.setStyleSheet(BUTTON_STYLE)
+        apply_btn.clicked.connect(self._run_train_only)
+
+        hl.addWidget(self.output_label)
+        hl.addWidget(browse_btn)
+        hl.addWidget(apply_btn)
+
+        group.setLayout(hl)
+        self.main_layout.addWidget(group)
+
+    # 파라미터 폴더 선택
+    def _browse_param_folder(self):
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Select parameter folder",
+            self.best_results_path
+        )
+        if path:
+            self.selected_param_dir = path
+            self.output_label.setText(self._pretty_path(path))
+
+            # 새 파라미터를 선택했으니, 다시 학습 전까지 Start 비활성화
+            self.neuron_cells = None
+            self.param_str = None
+            self._set_start_button_enabled(False)
+
+    # 학습만 실행
+    def _run_train_only(self):
+        """7번 Output Folder → Apply 버튼 동작"""
+
+        param_dir = self.selected_param_dir
+        if not param_dir:
+            QMessageBox.warning(self, "No folder", "먼저 '...' 버튼으로 폴더를 선택하세요.")
+            return
+        if not os.path.isdir(param_dir):
+            QMessageBox.warning(self, "Invalid folder", "선택한 폴더가 존재하지 않습니다.")
             return
 
-        # 지연 import: 순환 import 방지
-        import custom_1
-        Custom_1_Window = custom_1.Custom_1_Window
-
-        # 여기서 스타일 다시 안 건드려도 됨 (GLOBAL_FONT_QSS 필요 X)
-        self._custom1_window = Custom_1_Window(prev_window=self)
-
-        self._custom1_window.show()
-        self.hide()
-
-    def _on_finish_clicked(self):
-        """
-        Finish 누르면 그래프 초기화 → 전역 상태 비우고 창 닫기
-        """
+        # 폴더명 파싱 (예: V256_C3_T2_M8K)
+        folder = os.path.basename(param_dir)
+        parts = folder.split("_")
         try:
-            EXPERIMENT_STATE.clear()
-        finally:
-            self.close()
+            v = int(parts[0][1:])
+            c = int(parts[1][1:])
+            t = int(parts[2][1:])
+        except Exception:
+            QMessageBox.warning(self, "Format error",
+                                "폴더 이름이 V@_C@_T@ 형식이 아닙니다.")
+            return
 
+        m_str = parts[3] if len(parts) >= 4 else None
+        # parameter : V@/T@/C@/M@ 형식 문자열 저장
+        self.param_str = f"V{v}/S{c}/C{t}"
+        if m_str:
+            self.param_str += f"/{m_str}"
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    w = ExperimentWindow()
-    w.show()
-    sys.exit(app.exec_())
+        # train_samples 만들기
+        train_samples = []
+        for label_dir in sorted(os.listdir(param_dir)):
+            label_path = os.path.join(param_dir, label_dir)
+            if not os.path.isdir(label_path):
+                continue
+
+            for fname in sorted(os.listdir(label_path)):
+                if fname.lower().endswith(IMG_EXTS):
+                    train_samples.append(
+                        (os.path.join(label_path, fname), label_dir)
+                    )
+
+        if not train_samples:
+            QMessageBox.warning(self, "No data", "선택 폴더에 이미지가 없습니다.")
+            return
+
+        # 모델 생성 + 학습
+        length = v
+        num_cells = c * t
+
+        self.neuron_cells = NeuronCells(
+            number_of_neuron_cells=num_cells,
+            length_of_input_vector=length,
+            measure="manhattan"
+        )
+
+        intellino_train(
+            neuron_cells=self.neuron_cells,
+            train_samples=train_samples,
+            number_of_neuron_cells=num_cells,
+            length_of_input_vector=length,
+            progress_callback=None
+        )
+
+        # 학습 완료 후 Start 버튼 활성화
+        self._set_start_button_enabled(True)
+
+        print("TRAINED LENGTH =", self.neuron_cells.length_of_input_vector)
+        print("TRAINED CELL COUNT =", self.neuron_cells.number_of_neuron_cells)
+
+        print("Param DIR =", param_dir)
+        print("Train samples count =", len(train_samples))
+        for i in range(3):
+            print(train_samples[i])
+
+# ============================================================
+# custom_4.py — PART 3
+# Test Section (UI 교체) + Test 실행 함수
+# ============================================================
+
+    def _add_inference_section(self):
+        """8. Test — 경로 표시 + Start 버튼"""
+
+        group = QGroupBox("8. Test")
+        group.setStyleSheet("""
+            QGroupBox {
+                font-weight:bold; 
+                border:1px solid #ccc; 
+                border-radius:10px; 
+                margin-top:6px; 
+                padding:8px 10px 10px 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding:-6px 4px 4px 4px;
+            }
+        """)
+
+        hl = QHBoxLayout()
+
+        # Label: test_root 표시
+        self.test_label = QLabel(self._pretty_path(self.test_root))
+        self.test_label.setStyleSheet("font-size:13px;")
+        self.test_label.setMinimumHeight(30)
+
+        # Start 버튼 (test only)
+        self.start_btn = QPushButton("Start")
+        self.start_btn.setFixedSize(80, 30)
+        self._set_start_button_enabled(False)   # 초기에는 비활성화
+        self.start_btn.clicked.connect(self._run_test_only)
+
+        hl.addWidget(self.test_label)
+        hl.addStretch()
+        hl.addWidget(self.start_btn)
+
+        group.setLayout(hl)
+        self.main_layout.addWidget(group)
+
+    # Test만 수행
+    def _run_test_only(self):
+        """8번 Test → Start 버튼"""
+
+        if self.neuron_cells is None:
+            QMessageBox.warning(self, "No Model",
+                                "먼저 7번 Output Folder에서 Apply로 학습을 완료하세요.")
+            return
+
+        if not self.test_root or not os.path.isdir(self.test_root):
+            QMessageBox.warning(self, "No test set",
+                                "datasets/test 폴더가 없습니다.")
+            return
+
+        per_correct = {}
+        per_total = {}
+
+        # 전체 class 평가
+        for label_dir in sorted(os.listdir(self.test_root)):
+            label_path = os.path.join(self.test_root, label_dir)
+            if not os.path.isdir(label_path):
+                continue
+
+            per_correct.setdefault(label_dir, 0)
+            per_total.setdefault(label_dir, 0)
+
+            for fname in sorted(os.listdir(label_path)):
+                if not fname.lower().endswith(IMG_EXTS):
+                    continue
+
+                img_path = os.path.join(label_path, fname)
+
+                pred = intellino_infer(
+                    neuron_cells=self.neuron_cells,
+                    image_path=img_path,
+                    length_of_input_vector=self.neuron_cells.length_of_input_vector
+                )
+
+                per_total[label_dir] += 1
+                if str(pred) == str(label_dir):
+                    per_correct[label_dir] += 1
+
+        # ====== 여기서부터 Result 포맷 출력 ======
+        class_list = sorted(per_total.keys(), key=lambda x: int(x))
+        classes_str = "/".join(class_list)
+
+        # 한 번 실행할 때마다 아래로 누적
+        self._append_result("")  # 빈 줄로 구분
+        self._append_result(f"class         : {classes_str}")
+
+        # param_str 이 있으면 그대로, 없으면 '-' 표시
+        param_to_show = self.param_str if self.param_str else "-"
+        self._append_result(f"parameter : {param_to_show}")
+        self._append_result(f"  ")
+        self._append_result(f"correct/total :")
+
+        for cls in class_list:
+            c = per_correct.get(cls, 0)
+            t = per_total.get(cls, 0)
+            self._append_result(f"{cls} : ({c}/{t})")
+        self._append_result("-" *32)
+
+        vec = preprocess_digit_image(...)
+        print("TEST VECTOR LENGTH =", len(vec))
+
+# ============================================================
+# custom_4.py — PART 4
+# Result Section (QTextBrowser) + 출력 헬퍼 함수들
+# ============================================================
+
+    def _add_result_section(self):
+        """9. Result"""
+
+        group = QGroupBox("9. Result")
+        group.setStyleSheet("""
+            QGroupBox {
+                font-weight:bold; 
+                border:1px solid #ccc; 
+                border-radius:10px; 
+                margin-top:6px; 
+                padding:8px 10px 10px 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding:-6px 4px 4px 4px;
+            }
+        """)
+
+        layout = QVBoxLayout()
+
+        self.result_box = QTextBrowser()
+        self.result_box.setStyleSheet("""
+            QTextBrowser {
+                background:#f8f9fa;
+                border:1px solid #ccc;
+                border-radius:8px;
+                font-size:14px;
+                padding:10px;
+            }
+        """)
+
+        layout.addWidget(self.result_box)
+        group.setLayout(layout)
+        self.main_layout.addWidget(group)
+
+    def _append_result(self, html: str):
+        self.result_box.append(html)
+        self.result_box.verticalScrollBar().setValue(
+            self.result_box.verticalScrollBar().maximum()
+        )
+
+    def _append_hr(self):
+        # 현재는 사용하지 않지만, 혹시 나중을 위해 남겨둠
+        self.result_box.append("<hr style='margin:8px 0;'>")
+        self.result_box.verticalScrollBar().setValue(
+            self.result_box.verticalScrollBar().maximum()
+        )
+
+# ============================================================
+# custom_4.py — PART 5
+# Finish 버튼 + 전체 레이아웃 연결
+# ============================================================
+    def _add_finish_button(self):
+        """Finish 버튼"""
+        btn = QPushButton("Finish")
+        btn.setFixedSize(130, 40)
+        btn.setStyleSheet(BUTTON_STYLE)
+        btn.clicked.connect(self.close)
+
+        hl = QHBoxLayout()
+        hl.addStretch()
+        hl.addWidget(btn)
+        self.main_layout.addLayout(hl)
+
+    def build_ui(self):
+        """전체 UI 배치"""
+
+        self._build_best_results()
+        self._add_output_section()
+        self._add_inference_section()
+        self._add_result_section()
+        self._add_finish_button()
