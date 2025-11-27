@@ -3,7 +3,7 @@ import math
 import time
 from PIL import Image  # (남겨두지만 학습·평가·추론은 모두 OpenCV 기반 전처리 사용)
 from utils.resource_utils import resource_path
-from utils.image_preprocess import preprocess_digit_image
+from utils.image_preprocess import preprocess_user_image
 from utils.ui_common import TitleBar, BUTTON_STYLE
 
 
@@ -144,13 +144,13 @@ def kmeans_clustering(vectors: np.ndarray, num_select: int,
 
 # 전처리(단일 파이프라인)
 # → utils.image_preprocess.preprocess_digit_image 를 사용합니다.
-def load_images_from_dir(dir_path: str):
+def load_images_from_dir(dir_path: str, length_of_input_vector: int):
     files = [os.path.join(dir_path, f) for f in sorted(os.listdir(dir_path))
              if str(f).lower().endswith(IMG_EXTS)]
     X, keep = [], []
     for p in files:
         try:
-            vec = preprocess_digit_image(p)
+            vec = preprocess_user_image(p, length_of_input_vector)
             X.append(vec); keep.append(os.path.abspath(p))
         except Exception:
             pass
@@ -791,7 +791,7 @@ class SubWindow(QWidget):
                             continue
 
                         # sample 폴더에서 이미지 벡터 로드
-                        X, sample_paths = load_images_from_dir(src_sample_label)
+                        X, sample_paths = load_images_from_dir(src_sample_label, length_of_input_vector=self.length_of_input_vector)
                         n_samples = len(sample_paths)
                         if n_samples == 0:
                             continue

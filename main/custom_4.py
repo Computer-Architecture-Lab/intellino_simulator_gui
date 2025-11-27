@@ -20,7 +20,6 @@ from custom_3 import infer as intellino_infer, IMG_EXTS
 # ------------------------------------------------------------
 from utils.resource_utils import resource_path
 from utils.ui_common import TitleBar, BUTTON_STYLE
-from utils.image_preprocess import preprocess_digit_image
 
 #=======================================================================================================#
 #                                                 main                                                  #
@@ -365,8 +364,6 @@ class ExperimentWindow(QWidget):
             self._append_result(f"{cls} : ({c}/{t})")
         self._append_result("-" *32)
 
-        vec = preprocess_digit_image(...)
-        print("TEST VECTOR LENGTH =", len(vec))
 
 # ============================================================
 # custom_4.py — PART 4

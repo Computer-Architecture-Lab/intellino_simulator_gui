@@ -20,7 +20,6 @@ GLOBAL_FONT_QSS = """
 }
 """
 
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
