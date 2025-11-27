@@ -1,48 +1,28 @@
 # utils/image_preprocess.py
 import cv2
+import math
 import numpy as np
 
-def preprocess_digit_image(image_path: str) -> np.ndarray:
-    """
-    모든 숫자 이미지 전처리를 위한 통합 함수.
-    custom_3, mnist 모두 이 함수 하나만 사용하도록 통일 가능.
-    """
-    img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError(f"Unable to open image: {image_path}")
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (3,3), 0)
+def preprocess_user_image(image_path: str, length_of_input_vector=None):
 
-    # OTSU + 필요 시 반전
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if np.mean(binary) > 127:  
-        binary = 255 - binary
+    RESIZE_SIZE = int(math.sqrt(length_of_input_vector))
+    # 1. 이미지 읽기 (grayscale)
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise ValueError("Unable to mount image.")
 
-    # crop
-    coords = cv2.findNonZero(binary)
-    if coords is None:
-        cropped = binary
-    else:
-        x, y, w, h = cv2.boundingRect(coords)
-        cropped = binary[y:y+h, x:x+w]
+    # 2. 이미지 크기 조정
+    image = cv2.resize(image, (RESIZE_SIZE, RESIZE_SIZE))
 
-    # 긴 변 기준 20px resize
-    target = 20
-    h2, w2 = cropped.shape[:2]
-    if h2 == 0 or w2 == 0:
-        resized = np.zeros((20,20), dtype=np.uint8)
-    else:
-        if w2 > h2:
-            new_w, new_h = target, max(1, int(h2 * target / w2))
-        else:
-            new_h, new_w = target, max(1, int(w2 * target / h2))
-        resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    _, image = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # 28×28 중앙 배치
-    canvas = np.zeros((28,28), dtype=np.uint8)
-    yo = (28 - resized.shape[0]) // 2
-    xo = (28 - resized.shape[1]) // 2
-    canvas[yo:yo+resized.shape[0], xo:xo+resized.shape[1]] = resized
+    # 3. 픽셀 반전 (흰 배경일 경우 평균 밝기 기준)
+    if np.mean(image) > 127:
+        image = 255 - image  # MNIST 스타일로 맞춤
 
-    return (canvas.astype(np.float32) / 255.0).reshape(-1)
+    # 4. 디버깅 이미지 저장
+    cv2.imwrite("preprocessed_debug.png", image)
+
+    # 5. 평탄화 (flatten)
+    return image.reshape(1, -1).squeeze()
