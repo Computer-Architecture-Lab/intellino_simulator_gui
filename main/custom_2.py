@@ -15,10 +15,11 @@ from utils.path_utils import get_dirs
 
 from utils.resource_utils import resource_path
 from utils.ui_common import BUTTON_STYLE
+#=======================================================================================================#
 
 ASSETS_DIR = os.path.abspath(os.path.dirname(__file__))
-LOGO_PATH = resource_path("intellino_TM_transparent.png")
-HOME_ICON_PATH = resource_path("home.png")
+LOGO_PATH = resource_path("image/intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("image/home.png")
 
 MESSAGE_BOX_QSS = """
 QMessageBox {
@@ -54,8 +55,27 @@ _, BASE_NUMBER_DIR, _ = get_dirs(__file__)
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
 BUTTON_STYLE_LOCAL = BUTTON_STYLE  # alias (필요 시 커스터마이징 가능)
-
-
+#=======================================================================================================#
+#                                              function                                                 #
+#=======================================================================================================#
+# custom_1에서 import 해서 사용하는 함수
+def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
+    """
+    custom_1에서 호출하는 진입 함수.
+    전달받은 파라미터로 Custom_2_Window를 띄워준다.
+    """
+    window = Custom_2_Window(
+        num_categories=num_categories,
+        samples_per_class=samples_per_class,
+        input_vector_length=input_vector_length,
+        selected_mem_kb=selected_mem_kb,
+        prev_window=prev_window,
+    )
+    window.show()
+    return window
+#=======================================================================================================#
+#                                               UI 구성                                                  #
+#=======================================================================================================#
 class TrainDatasetGroup(QGroupBox):
     """
     4. Datasets of each category
@@ -68,6 +88,8 @@ class TrainDatasetGroup(QGroupBox):
       custom_3(Window3)에서 selection['files']를 받아서 별도로 수행한다.
     """
     completeness_changed = Signal(bool)
+
+    MIN_IMAGES_PER_CATEGORY = 12
 
 #카테고리 수를 받아서 UI(각 카테고리별 폴더 선택 행)를 초기화하고 표시할 준비를 한다.
     def __init__(self, num_categories=3, base_dir=BASE_NUMBER_DIR):
@@ -207,7 +229,7 @@ class TrainDatasetGroup(QGroupBox):
         n > 0  → 초록 (OK)
         n == 0 → 빨강 (데이터 없음)
         """
-        if n > 12:
+        if n > self.MIN_IMAGES_PER_CATEGORY:
             return (
                 "QLabel { background:#e6fcf5; border:1px solid #37b24d; "
                 "color:#2b8a3e; border-radius:6px; padding:4px; }"
@@ -264,7 +286,7 @@ class TrainDatasetGroup(QGroupBox):
             if not os.path.isdir(d):
                 return False
             n = self._count_images_in_dir(d)
-            if n <= 0:
+            if n < self.MIN_IMAGES_PER_CATEGORY:
                 return False
         return True
 
@@ -313,7 +335,9 @@ class TrainDatasetGroup(QGroupBox):
             })
         return items
 
-
+#=======================================================================================================#
+#                                                 main                                                  #
+#=======================================================================================================#
 class Custom_2_Window(QWidget):
     def __init__(self, num_categories=3, samples_per_class=1, input_vector_length=0, selected_mem_kb=None, prev_window=None):
         super().__init__()
@@ -481,26 +505,6 @@ class Custom_2_Window(QWidget):
     def mouseMoveEvent(self, e):
         if hasattr(self, 'offset') and e.buttons() == Qt.LeftButton:
             self.move(self.pos() + e.pos() - self.offset)
-
-
-# ─────────────────────────────────────────────
-# custom_1에서 import 해서 사용하는 함수
-# ─────────────────────────────────────────────
-def launch_training_window(num_categories, samples_per_class, input_vector_length, selected_mem_kb, prev_window=None):
-    """
-    custom_1에서 호출하는 진입 함수.
-    전달받은 파라미터로 Custom_2_Window를 띄워준다.
-    """
-    window = Custom_2_Window(
-        num_categories=num_categories,
-        samples_per_class=samples_per_class,
-        input_vector_length=input_vector_length,
-        selected_mem_kb=selected_mem_kb,
-        prev_window=prev_window,
-    )
-    window.show()
-    return window
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

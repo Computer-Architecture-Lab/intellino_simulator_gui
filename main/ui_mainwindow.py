@@ -97,4 +97,3 @@ QPushButton:hover {
         self.easyModeBtn.setText(QCoreApplication.translate("MainWindow", u"Existing datasets mode", None))
         self.hardModeBtn.setText(QCoreApplication.translate("MainWindow", u"Custom datasets mode", None))
         self.imageLabel.setText("")
-

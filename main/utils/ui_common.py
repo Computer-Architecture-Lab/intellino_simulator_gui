@@ -49,7 +49,7 @@ class TitleBar(QWidget):
 
         # Logo
         logo_label = QLabel()
-        pm = QPixmap(resource_path("intellino_TM_transparent.png"))
+        pm = QPixmap(resource_path("image/intellino_TM_transparent.png"))
         if pm.isNull():
             logo_label.setText("intellino")
             logo_label.setStyleSheet("font-weight:600;")
@@ -58,7 +58,7 @@ class TitleBar(QWidget):
 
         # Home btn
         home_btn = QPushButton()
-        icon = QIcon(resource_path("home.png"))
+        icon = QIcon(resource_path("image/home.png"))
         if icon.isNull():
             icon = self.style().standardIcon(QStyle.SP_DirHomeIcon)
         home_btn.setIcon(icon)

@@ -30,8 +30,8 @@ def resource_path(name: str) -> str:
             return p
     return candidates[0]  # 마지막 안전장치
 
-LOGO_PATH = resource_path("intellino_TM_transparent.png")
-HOME_ICON_PATH = resource_path("home.png")
+LOGO_PATH = resource_path("image/intellino_TM_transparent.png")
+HOME_ICON_PATH = resource_path("image/home.png")
 CUSTOM_IMAGE_ROOT, NUMBER_IMAGE_DIR, _ = get_dirs(__file__)
 
 
