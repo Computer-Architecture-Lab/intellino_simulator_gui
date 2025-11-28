@@ -15,7 +15,7 @@ from utils.ui_common import TitleBar, BUTTON_STYLE, TOGGLE_BUTTON_STYLE
 #=======================================================================================================#
 
 # 두 번째 이미지와 같은 큰 테두리 높이
-SECOND_STYLE_FIXED_HEIGHT = 260
+SECOND_STYLE_FIXED_HEIGHT = 390
 
 # 메모리 검토 시 사용할 "최소" 기준값
 MIN_INPUT_VECTOR_LENGTH = 64       # input vector length 최소
@@ -110,7 +110,7 @@ class IntegerInputGroup(QGroupBox):
 
 class CategoryInputGroup(IntegerInputGroup):
     def __init__(self, on_apply=None):
-        super().__init__("2. Number of class to train", "ex) 10", on_apply=on_apply)
+        super().__init__("2. Number of class to store", "ex) 10", on_apply=on_apply)
         self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
 
         # max: N 표시용 라벨
@@ -171,10 +171,31 @@ class IntellinoMemorySizeGroup(QGroupBox):
 class MemorySizeSection(QGroupBox):
     def __init__(self):
         super().__init__("3. Required memory size")
-        self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
 
+        # ★ 변경: 3번 박스만 padding을 줄여서 회색 칸에 딱 맞게 감싸도록 별도 스타일 사용
+        self.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #b0b0b0;
+                border-radius: 10px;
+                margin-top: 10px;
+                padding: 4px;               /* 기존 10px → 4px 로 줄임 */
+                background: transparent;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 5px;
+                background-color: white;
+                color: #000000;
+                font-weight: bold;
+            }
+        """)
+        self.setStyleSheet(GROUPBOX_WITH_FLOATING_TITLE + "QGroupBox { font-weight: bold; }")
+        
         layout = QVBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
+        # ★ 변경: GroupBox 안쪽 여백도 최소화
+        layout.setContentsMargins(4, 14, 4, 4)
+        layout.setSpacing(4)
 
         self.output_box = QTextBrowser()
         self.output_box.setStyleSheet("""
@@ -185,6 +206,7 @@ class MemorySizeSection(QGroupBox):
                 background-color: #f8f9fa;
             }
         """)
+        # 회색 칸 높이를 항상 고정
         self.output_box.setFixedHeight(SECOND_STYLE_FIXED_HEIGHT)
 
         layout.addWidget(self.output_box)
@@ -194,7 +216,7 @@ class MemorySizeSection(QGroupBox):
                        selected_mem_kb=None, exceed: bool = False):
         if num_classes <= 0:
             self.output_box.setText(
-                "Please select memory size and enter a valid number of class to train."
+                "Please select memory size and enter a valid number of class to store."
             )
             return
 
@@ -205,7 +227,7 @@ class MemorySizeSection(QGroupBox):
             f"  input vector length ≥ {input_vector_length}\n"
             f"  number of sample dataset per class ≥ {training_dataset}\n\n"
             "input vector length × number of sample dataset per class × "
-            "number of class to train ≤ memory size\n\n"
+            "number of class to store ≤ memory size\n\n"
             f"⇒ {input_vector_length} × {training_dataset} × {num_classes} "
             f"{comparator} memory size\n"
         )
@@ -323,7 +345,6 @@ class Custom_1_Window(QWidget):
             and product_min > INTELLINO_MEMORY_BYTES[selected_mem]
         )
 
-        # ★ 여기 오타 수정: self.memory_display
         self.memory_display.update_display(
             MIN_INPUT_VECTOR_LENGTH,
             MIN_SAMPLES_PER_CLASS,

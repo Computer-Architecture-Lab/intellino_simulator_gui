@@ -266,7 +266,7 @@ class ExperimentState:
 EXPERIMENT_STATE = ExperimentState()
 
 class ProgressSection(QWidget):
-    def __init__(self, title="7. Train"):
+    def __init__(self, title="7. Storange & inference"):
         super().__init__()
         g = QGroupBox(title); g.setStyleSheet(
             "QGroupBox{font-weight:bold;border:1px solid #b0b0b0;border-radius:10px;margin-top:10px;padding:10px;}"
@@ -491,14 +491,16 @@ class ExperimentGraphSection(QWidget):
 
         inner.addLayout(grid)
 
-        self.memory_label = QLabel("")
+        # 🔽🔽🔽 이 부분만 이렇게 변경
+        self.memory_label = QLabel(
+            "Selected memory size: (not specified)   A: accuracy   S: sample dataset"
+        )
         self.memory_label.setStyleSheet("font-size: 13px; color: #444; margin-top: 8px;")
         self.memory_label.setAlignment(Qt.AlignLeft)
         inner.addWidget(self.memory_label)
-        # 아래쪽 로그(문자 결과 창)는 화면에서 제거
-        # 내부 로깅용으로만 숨겨진 ResultView 유지
+
         self.log_view = ResultView()
-        self.log_view.setVisible(False)  # UI에는 표시하지 않음
+        self.log_view.setVisible(False)
 
     def update_graph(self, results: dict, vec_lengths, k_list):
         """
@@ -612,7 +614,7 @@ class SubWindow(QWidget):
         lay = QVBoxLayout(container); lay.setContentsMargins(20,60,20,20); lay.setSpacing(20)
 
         # 5. Train (progress bar)
-        self.progress = ProgressSection("5. Train"); lay.addWidget(self.progress)
+        self.progress = ProgressSection("5. Storage & Inference"); lay.addWidget(self.progress)
 
         # 6. Experiment graph (그래프 + 숨겨진 로그)
         self.graph_section = ExperimentGraphSection()
@@ -914,9 +916,13 @@ class SubWindow(QWidget):
         self.graph_section.update_graph(results, vec_lengths, k_list)
         memory_kb = self.exp_params.get("memory_kb", None)
         if memory_kb is not None:
-            self.graph_section.memory_label.setText(f"Selected memory size: {memory_kb} KB")
+            self.graph_section.memory_label.setText(
+                f"Selected memory size: {memory_kb} KB   A: accuracy   S: sample dataset"
+            )
         else:
-            self.graph_section.memory_label.setText("Selected memory size: (not specified)")
+            self.graph_section.memory_label.setText(
+                "Selected memory size: (not specified)   A: accuracy   S: sample dataset"
+            )
 
         # ────────────────── 3단계: 전체 실험 요약 ──────────────────
         if not any_run:

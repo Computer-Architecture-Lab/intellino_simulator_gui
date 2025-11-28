@@ -97,16 +97,21 @@ class ExperimentWindow(QWidget):
         run_root = os.path.dirname(self.best_results_root)
         self.test_root = os.path.join(run_root, "datasets", "test")
 
-    # 절대 경로 표시 편하게
+    # 상대 경로 표시 
     def _pretty_path(self, path: str) -> str:
         if not path:
             return ""
 
+        # 먼저 모든 백슬래시를 슬래시로 통일
+        path = path.replace("\\", "/")
         lower = path.lower()
-        key = os.path.join("intellino_simulator_gui").lower()
+
+        # 'main' 기준으로 자르기
+        key = "/main/"
         idx = lower.find(key)
         if idx != -1:
-            return path[idx:]
+            path = path[idx+1:]   # 앞의 / 제거
+
         return path
 
     # Start 버튼 enable/disable 공통 처리
@@ -124,7 +129,7 @@ class ExperimentWindow(QWidget):
     def _add_output_section(self):
         """7. Output Folder — 파라미터 폴더 선택 + Apply(학습)"""
 
-        group = QGroupBox("7. Output Folder")
+        group = QGroupBox("7. Select Parameter Folder")
         group.setStyleSheet("""
             QGroupBox {
                 font-weight:bold; 
